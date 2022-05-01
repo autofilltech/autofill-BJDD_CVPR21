@@ -42,7 +42,10 @@ class matDatasetReader(Dataset):
         raw = loadmat(self.image_list[i])  
         raw = np.stack((np.asarray(raw["raw"])[:,:,0], np.asarray(raw["raw"])[:,:,1], np.asarray(raw["raw"])[:,:,3]), 0)
         raw = torch.tensor(raw / 65535.0) ** (1/2.4)
-        sampled = raw.clone()
+        
+        # create bayered image straight from the raw original
+        # This is for testing a 4x4 channel interleaved format, testing only 1 channel of RGGB
+	sampled = raw.clone()
         sampled[0, 0::4, 1::4] = 0
         sampled[0, 0::4, 2::4] = 0
         sampled[0, 0::4, 3::4] = 0
@@ -65,27 +68,28 @@ class matDatasetReader(Dataset):
         sampled[2, 0::4, :] = 0
         sampled[2, 1::4, :] = 0
         sampled[2, 3::4, :] = 0
+	
+	#self.sampledImage = Image.fromarray(np.array((sampled * 255).permute(1,2,0), dtype=np.uint8))
 
+        # test storing it in a single channel instead
         sampled = sampled[0] + sampled[1] + sampled[2] #torch.stack((sampled[0] + sampled[1] + sampled[2],), 0)
+	self.sampledImage = Image.fromarray(np.array((sampled * 255), dtype=np.uint8))
+	
+	# This is for creating a regular bayer pattern, instead of the code above
 	#sampled[0, 0::2, 1::2] = 0
 	#sampled[0, 1::2, :] = 0
 	#sampled[1, 0::2, 0::2] = 0
 	#sampled[1, 1::2, 1::2] = 0
 	#sampled[2, 0::2, :] = 0
 	#sampled[2, 1::2, 0::2] = 0
-
 	#self.sampledImage = Image.fromarray(np.array((sampled * 255).permute(1,2,0), dtype=np.uint8))
-        self.sampledImage = Image.fromarray(np.array((sampled * 255), dtype=np.uint8))
+
         self.gtImage = Image.fromarray(np.array((raw * 255).permute(1,2,0), dtype=np.uint8))
-	#save_image(sampled, "modelOutput.png")
-	#self.gtImageFileName = self.imagePathGT + extractFileName(self.image_list[i])
-	#self.gtImage = Image.open(self.gtImageFileName)
 
         # Transforms Images for training 
         self.inputImage = self.transformRI(self.sampledImage)
         self.gtImageHR = self.transformHRGT(self.gtImage)
 
         #print (self.gtImageHR.max(), self.gtImageHR.min(), self.inputImage.max(), self.inputImage.min())
-        
 
         return self.inputImage, self.gtImageHR
