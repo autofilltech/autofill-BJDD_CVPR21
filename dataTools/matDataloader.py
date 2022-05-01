@@ -44,7 +44,7 @@ class matDatasetReader(Dataset):
         raw = torch.tensor(raw / 65535.0) ** (1/2.4)
         
         # create bayered image straight from the raw original
-        # This is for testing a 4x4 channel interleaved format, testing only 1 channel of RGGB
+        # This is for testing a quadbayer format, testing only 1/4 of the channels
         sampled = raw.clone()
         sampled[0, 0::4, 1::4] = 0
         sampled[0, 0::4, 2::4] = 0
