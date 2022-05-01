@@ -5,11 +5,11 @@ from torchsummary import summary
 from modelDefinitions.basicBlocks import *    
 
 class attentionNet(nn.Module):
-    def __init__(self, squeezeFilters = 64, expandFilters = 64, depth = 3):
+    def __init__(self, inputC, outputC, squeezeFilters = 64, expandFilters = 64, depth = 3):
         super(attentionNet, self).__init__()
 
         # Input Block
-        self.inputConv = nn.Conv2d(3, squeezeFilters, 3,1,1)
+        self.inputConv = nn.Conv2d(inputC, squeezeFilters, 5,1,2)
         depthAttenBlock = []
         for i in range (depth):
             depthAttenBlock.append(attentionGuidedResBlock(squeezeFilters, expandFilters))
@@ -47,9 +47,14 @@ class attentionNet(nn.Module):
             depthAttenBlock5.append(attentionGuidedResBlock(64,64, dilationRate=1))
         self.depthAttention5 = nn.Sequential(*depthAttenBlock5)
         self.spatialAttention5 = SpatialAttentionBlock(64)
-        self.convOut = nn.Conv2d(squeezeFilters,3,1,)
+        self.convOut = nn.Conv2d(squeezeFilters,outputC,1,)
 
-        # Weight Initialization
+        if not inputC == outputC:
+            self.convIO = nn.Conv2d(inputC, outputC, 1)
+        else:
+            self.convIO = None
+
+	# Weight Initialization
         #self._initialize_weights()
 
     def forward(self, img):
@@ -76,7 +81,8 @@ class attentionNet(nn.Module):
         xSP5 = self.depthAttention5(xPS2)
         xFA5 = self.spatialAttention5(xSP5) + xFA1
         
-        return torch.tanh(self.convOut(xFA5) + img)
+        io = self.convIO(img) if self.convIO else img	
+        return torch.tanh(self.convOut(xFA5) + io)
         
         
     

@@ -26,7 +26,7 @@ class datasetSampler:
         self.interval = int(config['interval'])
         self.barLen = int(config['barLen'])
         self.gridSze = int(gridSze)
-        self.patchSize= 128
+        self.patchSize= 256
 
         # Creating a directory to save processed samples
         createDir(self.targetPath)

@@ -16,6 +16,7 @@ from torchsummary import summary
 from ptflops import get_model_complexity_info
 from utilities.torchUtils import *
 from dataTools.customDataloader import *
+from dataTools.matDataloader import *
 from utilities.inferenceUtils import *
 from utilities.aestheticUtils import *
 from loss.pytorch_msssim import *
@@ -31,7 +32,6 @@ class BJDD:
         
         # Model Configration 
         self.gtPath = config['gtPath']
-        self.targetPath = config['targetPath']
         self.checkpointPath = config['checkpointPath']
         self.logPath = config['logPath']
         self.testImagesPath = config['testImagePath']
@@ -39,12 +39,12 @@ class BJDD:
         self.modelName = config['modelName']
         self.dataSamples = config['dataSamples']
         self.batchSize = int(config['batchSize'])
-        self.imageH = 128#int(config['imageH'])
-        self.imageW = 128#int(config['imageW'])
+        self.imageH = int(config['imageH'])
+        self.imageW = int(config['imageW'])
         self.inputC = int(config['inputC'])
         self.outputC = int(config['outputC'])
         self.scalingFactor = int(config['scalingFactor'])
-        self.binnigFactor = int(config['binnigFactor'])
+        self.binningFactor = int(config['binningFactor'])
         self.totalEpoch = int(config['epoch'])
         self.interval = int(config['interval'])
         self.learningRate = float(config['learningRate'])
@@ -68,7 +68,7 @@ class BJDD:
 
         # Preapring model(s) for GPU acceleration
         self.device =  torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-        self.attentionNet = attentionNet().to(self.device)
+        self.attentionNet = attentionNet(self.inputC, self.outputC).to(self.device)
         self.discriminator = attentiomDiscriminator().to(self.device)
 
         # Optimizers
@@ -80,15 +80,15 @@ class BJDD:
         
     def customTrainLoader(self, overFitTest = False):
         
-        targetImageList = imageList(self.targetPath)
-        print ("Trining Samples (Input):", self.targetPath, len(targetImageList))
+        targetImageList = imageList(self.gtPath)
+        print ("Trining Samples (Input):", self.gtPath, len(targetImageList))
 
         if overFitTest == True:
             targetImageList = targetImageList[-1:]
         if self.dataSamples:
             targetImageList = targetImageList[:self.dataSamples]
 
-        datasetReadder = customDatasetReader(   
+        datasetReadder = matDatasetReader(   
                                                 image_list=targetImageList, 
                                                 imagePathGT=self.gtPath,
                                                 height = self.imageH,
@@ -232,7 +232,10 @@ class BJDD:
                                     'Atttention Net' : self.attentionNet,
                                   }
                     tbLogWritter(summaryInfo)
+                    save_image(self.unNorm(rawInput[0]), 'rawinput.png')
+                    save_image(self.unNorm(highResReal[0]), 'groundTruth.png')
                     save_image(self.unNorm(highResFake[0]), 'modelOutput.png')
+
 
                     # Saving Weights and state of the model for resume training 
                     self.savingWeights(currentStep)
@@ -260,7 +263,7 @@ class BJDD:
             self.resultDir = outputDir
         
 
-        modelInference = inference(gridSize=self.binnigFactor, inputRootDir=self.testImagesPath, outputRootDir=self.resultDir, modelName=self.modelName, validation=validation)
+        modelInference = inference(gridSize=self.binningFactor, inputRootDir=self.testImagesPath, outputRootDir=self.resultDir, modelName=self.modelName, validation=validation)
 
         testImageList = modelInference.testingSetProcessor()
         barVal = ProgressBar(len(testImageList) * len(noiseSet), max_width=int(50))
@@ -280,7 +283,7 @@ class BJDD:
 
     def modelSummary(self,input_size = None):
         if not input_size:
-            input_size = (3, self.imageH//self.scalingFactor, self.imageW//self.scalingFactor)
+            input_size = (self.inputC, self.imageH//self.scalingFactor, self.imageW//self.scalingFactor)
 
      
         customPrint(Fore.YELLOW + "AttentionNet (Generator)", textWidth=self.barLen)
