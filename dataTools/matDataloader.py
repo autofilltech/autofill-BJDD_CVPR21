@@ -29,7 +29,7 @@ class matDatasetReader(Dataset):
     
         self.transformRI = transforms.Compose([transforms.ToTensor(),
                                                 normalize1,
-                                                AddGaussianNoise(0, 0.01, pov=0.6)
+                                                AddGaussianNoise(0, 0.1, pov=0.6)
                                             ])
 
     def __len__(self):
@@ -45,7 +45,7 @@ class matDatasetReader(Dataset):
         
         # create bayered image straight from the raw original
         # This is for testing a 4x4 channel interleaved format, testing only 1 channel of RGGB
-	sampled = raw.clone()
+        sampled = raw.clone()
         sampled[0, 0::4, 1::4] = 0
         sampled[0, 0::4, 2::4] = 0
         sampled[0, 0::4, 3::4] = 0
@@ -73,16 +73,16 @@ class matDatasetReader(Dataset):
 
         # test storing it in a single channel instead
         sampled = sampled[0] + sampled[1] + sampled[2] #torch.stack((sampled[0] + sampled[1] + sampled[2],), 0)
-	self.sampledImage = Image.fromarray(np.array((sampled * 255), dtype=np.uint8))
+        self.sampledImage = Image.fromarray(np.array((sampled * 255), dtype=np.uint8))
 	
-	# This is for creating a regular bayer pattern, instead of the code above
-	#sampled[0, 0::2, 1::2] = 0
-	#sampled[0, 1::2, :] = 0
-	#sampled[1, 0::2, 0::2] = 0
-	#sampled[1, 1::2, 1::2] = 0
-	#sampled[2, 0::2, :] = 0
-	#sampled[2, 1::2, 0::2] = 0
-	#self.sampledImage = Image.fromarray(np.array((sampled * 255).permute(1,2,0), dtype=np.uint8))
+        # This is for creating a regular bayer pattern, instead of the code above
+        #sampled[0, 0::2, 1::2] = 0
+        #sampled[0, 1::2, :] = 0
+        #sampled[1, 0::2, 0::2] = 0
+        #sampled[1, 1::2, 1::2] = 0
+        #sampled[2, 0::2, :] = 0
+        #sampled[2, 1::2, 0::2] = 0
+        #self.sampledImage = Image.fromarray(np.array((sampled * 255).permute(1,2,0), dtype=np.uint8))
 
         self.gtImage = Image.fromarray(np.array((raw * 255).permute(1,2,0), dtype=np.uint8))
 
