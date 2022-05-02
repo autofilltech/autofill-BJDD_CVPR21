@@ -3,3 +3,4 @@ weights/
 logDir/
 *.png
 *.pth
+*.swp

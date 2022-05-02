@@ -8,7 +8,7 @@
 	"dataSamples": null, 
 	"batchSize": 4, 
 	"barLen": "64", 
-	"interval": "20", 
+	"interval": "10", 
 	"imageH": "256", 
 	"imageW": "256", 
 	"inputC": "1", 
