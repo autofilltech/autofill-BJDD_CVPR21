@@ -159,7 +159,7 @@ def createDir(path):
     Path(path).mkdir(parents=True, exist_ok=True)
     return True
 
-def imageList(path, multiDir = False, imageExtension =['*.jpg', '*.png', '*.jpeg', '*.tif', '*.bmp', "*.mat"]):
+def imageList(path, multiDir = False, imageExtension =['*.jpg', '*.png', '*.jpeg', '*.tif', '*.bmp', "*.mat", "*.npz"]):
     #types = () # the tuple of file types
     imageList = []
     for ext in imageExtension:

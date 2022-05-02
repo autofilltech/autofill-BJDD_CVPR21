@@ -9,9 +9,9 @@ import torch.nn.init as init
     
 
 class attentiomDiscriminator(nn.Module):
-    def __init__(self):
+    def __init__(self, outputC):
         super(attentiomDiscriminator, self).__init__()
-        self.conv1 = nn.Conv2d(3, 64, 3, stride=1, padding=1)
+        self.conv1 = nn.Conv2d(outputC, 64, 3, stride=1, padding=1)
 
         self.conv2 = nn.Conv2d(64, 64, 3, stride=2, padding=1)
         self.bn2 = nn.BatchNorm2d(64)

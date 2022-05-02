@@ -1,12 +1,12 @@
 {
-	"gtPath": "/mnt/data/ps200_train_256/", 
+	"gtPath": "/mnt/data/npz/", 
 	"checkpointPath": "./weights/", 
 	"testImagePath": "./testingImages/", 
 	"resultDir": "./modelOutput/", 
 	"logPath": "./logDir/", 
 	"modelName": "PIPNet", 
 	"dataSamples": null, 
-	"batchSize": 4, 
+	"batchSize": 1, 
 	"barLen": "64", 
 	"interval": "10", 
 	"imageH": "256", 
@@ -15,7 +15,7 @@
 	"outputC": "3", 
 	"scalingFactor": "1", 
 	"binningFactor": 1, 
-	"epoch": 10, 
+	"epoch": 5, 
 	"learningRate": "0.0001", 
 	"adamBeta1": "0.9", 
 	"adamBeta2": "0.99"

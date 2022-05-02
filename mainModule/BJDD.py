@@ -16,7 +16,7 @@ from torchsummary import summary
 from ptflops import get_model_complexity_info
 from utilities.torchUtils import *
 from dataTools.customDataloader import *
-from dataTools.matDataloader import *
+from dataTools.npzDataLoader import *
 from utilities.inferenceUtils import *
 from utilities.aestheticUtils import *
 from loss.pytorch_msssim import *
@@ -69,7 +69,7 @@ class BJDD:
         # Preapring model(s) for GPU acceleration
         self.device =  torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
         self.attentionNet = attentionNet(self.inputC, self.outputC).to(self.device)
-        self.discriminator = attentiomDiscriminator().to(self.device)
+        self.discriminator = attentiomDiscriminator(self.outputC).to(self.device)
 
         # Optimizers
         self.optimizerEG = torch.optim.Adam(self.attentionNet.parameters(), lr=self.learningRate, betas=(self.adamBeta1, self.adamBeta2))
@@ -88,7 +88,7 @@ class BJDD:
         if self.dataSamples:
             targetImageList = targetImageList[:self.dataSamples]
 
-        datasetReadder = matDatasetReader(   
+        datasetReadder = npzDatasetReader(   
                                                 image_list=targetImageList, 
                                                 imagePathGT=self.gtPath,
                                                 height = self.imageH,
@@ -168,7 +168,7 @@ class BJDD:
 
                 # Images
                 rawInput = LRImages.to(self.device)
-                highResReal = HRGTImages.to(self.device)
+                highResReal = HRGTImages.to(self.device)[:,:3,:,:]
               
                 
                 # GAN Variables
@@ -182,7 +182,7 @@ class BJDD:
                 ##############################
     
                 # Image Generation
-                highResFake = self.attentionNet(rawInput)
+                highResFake = self.attentionNet(rawInput)[:,:3,:,:]
                 
                 # Optimaztion of Discriminator
                 self.optimizerED.zero_grad()
