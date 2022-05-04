@@ -108,7 +108,7 @@ class BJDD:
             self.dataSamples = dataSamples 
 
         # Losses
-        featureLoss = regularizedFeatureLoss().to(self.device)
+        featureLoss = regularizedFeatureLoss(self.device).to(self.device)
         reconstructionLoss = torch.nn.L1Loss().to(self.device)
         ssimLoss = MSSSIM().to(self.device)
         colorLoss = deltaEColorLoss(normalize=True).to(self.device)
@@ -168,9 +168,8 @@ class BJDD:
 
                 # Images
                 rawInput = LRImages.to(self.device)
-                highResReal = HRGTImages.to(self.device)[:,:3,:,:]
+                highResReal = HRGTImages.to(self.device)
               
-                
                 # GAN Variables
                 onesConst = torch.ones(rawInput.shape[0], 1).to(self.device)
                 targetReal = (torch.rand(rawInput.shape[0],1) * 0.5 + 0.7).to(self.device)
@@ -182,7 +181,7 @@ class BJDD:
                 ##############################
     
                 # Image Generation
-                highResFake = self.attentionNet(rawInput)[:,:3,:,:]
+                highResFake = self.attentionNet(rawInput)
                 
                 # Optimaztion of Discriminator
                 self.optimizerED.zero_grad()
@@ -194,9 +193,10 @@ class BJDD:
                 
                 # Optimization of generator 
                 self.optimizerEG.zero_grad()
-                generatorContentLoss =  reconstructionLoss(highResFake, highResReal) + \
-                                        featureLoss(highResFake, highResReal) + \
-                                        colorLoss(highResFake, highResReal)
+                Lr = reconstructionLoss(highResFake, highResReal)
+                Lf = featureLoss(highResFake, highResReal)
+                Lc = colorLoss(highResFake, highResReal)
+                generatorContentLoss =  Lr + Lf + Lc
 
                 generatorAdversarialLoss = adversarialLoss(self.discriminator(highResFake), onesConst)
                 lossEG = generatorContentLoss + 1e-3 * generatorAdversarialLoss
@@ -226,15 +226,25 @@ class BJDD:
                                     'GT Images' : self.unNorm(highResReal),
                                     'Step' : currentStep + 1,
                                     'Epoch' : self.currentEpoch,
-                                    'LossEG' : lossEG.item(),
-                                    'LossED' : lossED.item(),
+                                    'Loss EG' : lossEG.item(),
+                                    'Loss ED' : lossED.item(),
+                                    'Loss Color' : Lc.item(),
+                                    'Loss Feature' : Lf.item(),
+                                    'Loss Reconstruction' : Lr.item(),
                                     'Path' : self.logPath,
-                                    'Atttention Net' : self.attentionNet,
+                                    'Generator Model' : self.attentionNet,
+				    #'Discriminator Model' : self.discriminator,
                                   }
                     tbLogWritter(summaryInfo)
                     save_image(self.unNorm(rawInput[0]), 'rawinput.png')
-                    save_image(self.unNorm(highResReal[0]), 'groundTruth.png')
-                    save_image(self.unNorm(highResFake[0]), 'modelOutput.png')
+                    save_image(self.unNorm(highResReal[0][:3]), '1_groundTruth.png')
+                    save_image(self.unNorm(highResFake[0][:3]), '1_modelOutput.png')
+                    save_image(self.unNorm(highResReal[0][3:6]), '2_groundTruth.png')
+                    save_image(self.unNorm(highResFake[0][3:6]), '2_modelOutput.png')
+                    save_image(self.unNorm(highResReal[0][6:9]), '3_groundTruth.png')
+                    save_image(self.unNorm(highResFake[0][6:9]), '3_modelOutput.png')
+                    save_image(self.unNorm(highResReal[0][9:12]), '4_groundTruth.png')
+                    save_image(self.unNorm(highResFake[0][9:12]), '4_modelOutput.png')
 
 
                     # Saving Weights and state of the model for resume training 

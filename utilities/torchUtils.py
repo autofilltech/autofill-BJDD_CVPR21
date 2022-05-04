@@ -119,6 +119,7 @@ def show_img(img):
     plt.imshow(np.transpose(npimg, (1, 2, 0)))
     plt.show()
 
+'''
 def tbLogWritter2(model, loss, currentSteps, epoch, inputImage, outputImage, gtImage, path):
     
     createDir(path)
@@ -128,12 +129,17 @@ def tbLogWritter2(model, loss, currentSteps, epoch, inputImage, outputImage, gtI
     # Writiting images to the tensorboard
     writer.add_scalar('Training Loss', loss, currentSteps)
     writer.add_image('Input images', torchvision.utils.make_grid(inputImage))
+    if outputImage.shape[1] == 12 and outputImage.shape[0] == 1:
+	    outputImage = outputImage.reshape((4,3,outputImage.shape[2], outputImage.shape[3]))
+    if gtImage.shape[1] == 12 and gtImage.shape[0] == 1:
+	    gtImage = gtImage.reshape((4,3,gtImage.shape[2], gtImage.shape[3]))
+
     writer.add_image('Output images', torchvision.utils.make_grid(outputImage))
     writer.add_image('GT images', torchvision.utils.make_grid(gtImage))
     writer.add_graph(model, inputImage)
 
     writer.close()
-
+'''
 def tbLogWritter(summaryInfo):
     
     createDir(summaryInfo['Path'])
@@ -143,14 +149,17 @@ def tbLogWritter(summaryInfo):
     for k in summaryInfo:
         #print (k)
         if 'Image' in k:
-            writer.add_image(k, torchvision.utils.make_grid(summaryInfo[k]), summaryInfo['Step'])
+            img = summaryInfo[k]
+            if img.shape[1] == 12 and img.shape[0] == 1:
+                img = img.reshape((4,3,img.shape[2], img.shape[3]))
+            writer.add_image(k, torchvision.utils.make_grid(img), summaryInfo['Step'])
 
         elif 'Loss' in k:
             #print(k)
-            writer.add_scalar(k, summaryInfo[k])
+            writer.add_scalar(k, summaryInfo[k], summaryInfo['Step'])
 
         elif 'Model' in k:
-            writer.add_graph(summaryInfo[k], summaryInfo['Input Image'])
+            writer.add_graph(summaryInfo[k], summaryInfo['Input Images'])
 
     writer.close()
 

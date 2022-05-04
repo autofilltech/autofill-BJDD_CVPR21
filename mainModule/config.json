@@ -12,11 +12,11 @@
 	"imageH": "256", 
 	"imageW": "256", 
 	"inputC": "1", 
-	"outputC": "3", 
+	"outputC": "12", 
 	"scalingFactor": "1", 
 	"binningFactor": 1, 
-	"epoch": 5, 
-	"learningRate": "0.0001", 
+	"epoch": 8, 
+	"learningRate": "0.000001", 
 	"adamBeta1": "0.9", 
 	"adamBeta2": "0.99"
 }

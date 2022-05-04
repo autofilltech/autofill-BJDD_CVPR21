@@ -39,6 +39,9 @@ class npzDatasetReader(Dataset):
         raw = torch.tensor(npz["raw"]).float() / 255.0
         gt = torch.tensor(npz["gt"]).float() / 255.0
 
+        #gt = gt[0:3,:,:] + gt[3:6,:,:] + gt[6:9,:,:] + gt[9:12,:,:]
+        #gt = gt / 4
+
         self.inputImage = self.normalize1(self.transformRI(raw))
         self.gtImageHR = self.normalize12(gt) #self.gtImage #self.transformHRGT(self.gtImage)
 
