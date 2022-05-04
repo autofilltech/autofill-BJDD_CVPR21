@@ -83,7 +83,7 @@ def loadCheckpoints(path, modelName, epoch=False, lastWeights = True):
     if lastWeights == True:
         cpPath = findLastWeights(path, modelName)
     else:
-        cpPath = path + modelName
+        cpPath = os.path.join(path,modelName + "_checkpoint.pth")
 
     # Loading checkpoint
     checkpoint = torch.load(cpPath)
