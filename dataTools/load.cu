@@ -178,6 +178,7 @@ void cudaFreeLogged(void* ptr)
 {
 	int rc = cudaFree(ptr);
 	assert(cudaSuccess == rc);
+	//std::cout << "Releasing CUDA buffer" << std::endl;
 }
 
 torch::Tensor decompressB12(std::string path)
@@ -208,8 +209,8 @@ torch::Tensor decompressB12(std::string path)
 	assert(is);
 	is.close();
 
-	nvcomp::LZ4Manager m { 1<<16, NVCOMP_TYPE_UCHAR, 0 };
-	nvcomp::DecompressionConfig config = m.configure_decompression(compressed);
+	static nvcomp::LZ4Manager m { 1<<16, NVCOMP_TYPE_UCHAR, 0 };
+	static nvcomp::DecompressionConfig config = m.configure_decompression(compressed);
 	assert(packedBufferSize(width, height) == config.decomp_data_size);
 
 	m.decompress(packed, compressed, config);

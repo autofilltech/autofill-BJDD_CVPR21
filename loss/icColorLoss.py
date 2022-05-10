@@ -12,7 +12,6 @@ class ICColorLoss(nn.Module):
 		assert len(y.shape) == 4
 		assert y.shape[1] == 12
 		assert y.dtype == torch.float32
-
 		y = y ** 2
 		# S0 = Luminance per color channel
 		S0a = torch.stack((

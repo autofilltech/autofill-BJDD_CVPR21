@@ -3,6 +3,64 @@ import torch.nn.functional as F
 import torch
 import torch.nn.init as init
 from torchsummary import summary
+class BayerUpsample4x4(nn.Module):
+	def __init__(self):
+		super(BayerUpsample4x4, self).__init__()
+		self.conv = nn.Conv2d(16,16,7,padding=3,groups=16, bias=False)
+		kernel = torch.tensor([[0.25, 0.5, 0.75, 1, 0.75, 0.5, 0.25]])
+		kernel = torch.mul(kernel, kernel.T)
+		assert kernel.shape == (7,7)
+		print(self.conv.weight.shape)
+		self.conv.weight = nn.Parameter(kernel.expand(16, 1, 7, 7))
+		self.conv.weight.requires_grad = False
+	
+	def forward(self,x):
+		x = F.pixel_unshuffle(x, 2)
+		x = F.pixel_unshuffle(x, 2)
+		n,c,h,w = x.shape
+		y = torch.zeros((n, c, h*4, w*4)).cuda()
+		y[:, 0, 0::4, 0::4] = x[:,0]
+		y[:, 1, 0::4, 2::4] = x[:,1]
+		y[:, 2, 2::4, 0::4] = x[:,2]
+		y[:, 3, 2::4, 2::4] = x[:,3]
+		y[:, 4, 0::4, 1::4] = x[:,4]
+		y[:, 5, 0::4, 3::4] = x[:,5]
+		y[:, 6, 2::4, 1::4] = x[:,6]
+		y[:, 7, 2::4, 3::4] = x[:,7]
+		y[:, 8, 1::4, 0::4] = x[:,8]
+		y[:, 9, 1::4, 2::4] = x[:,9]
+		y[:,10, 3::4, 0::4] = x[:,10]
+		y[:,11, 3::4, 2::4] = x[:,11]
+		y[:,12, 1::4, 1::4] = x[:,12]
+		y[:,13, 1::4, 3::4] = x[:,13]
+		y[:,14, 3::4, 1::4] = x[:,14]
+		y[:,15, 3::4, 3::4] = x[:,15]
+
+		y = self.conv(y);
+		return y
+
+class LocalNormBlock(nn.Module):
+	def __init__(self, kernel_size = 3, dilation = 1):
+		super(LocalNormBlock, self).__init__()
+		self.conv = nn.Conv2d(1, 1, kernel_size, dilation = dilation, padding = dilation, bias = False)
+		self.conv.weight = nn.Parameter(torch.ones((1,1,kernel_size,kernel_size)) / (kernel_size ** 2))
+		self.conv.weight.requires_grad = False
+
+	def forward(self, x): # [*, 1, H, W] => [*, 2, H, W]
+		mean = self.conv(x)
+		x = (x - mean)
+		x = torch.concat((x, mean), dim=-3)
+		return x
+
+class LocalDenormBlock(nn.Module):
+	def __init__(self):
+		super(LocalDenormBlock,self).__init__()
+
+	def forward(self, x): # [*, C+Cm, H, W] => [*, C, H, W]
+		n,c,h,w = x.shape
+		x, mean = torch.split(x, (c//2,c//2), dim=-3)
+		x = x + mean
+		return x
 
 def init_weights(m):
     if isinstance(m, nn.Conv2d):
@@ -116,6 +174,7 @@ class SpatialAttention(nn.Module):
 
 class BasicConv(nn.Module):
     def __init__(self, in_planes, out_planes, kernel_size, stride=1, padding=0, dilation=1, groups=1, relu=True, bn=True, bias=False):
+        #assert not bn
         super(BasicConv, self).__init__()
         self.out_channels = out_planes
         self.conv = nn.Conv2d(in_planes, out_planes, kernel_size=kernel_size, stride=stride, padding=padding, dilation=dilation, groups=groups, bias=bias)

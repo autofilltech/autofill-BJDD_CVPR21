@@ -3,6 +3,7 @@ import torch.nn as nn
 from skimage import io, color
 import numpy as np
 import random
+
 class deltaEColorLoss(nn.Module):
 
 	def __init__(self, normalize=None):
@@ -13,12 +14,12 @@ class deltaEColorLoss(nn.Module):
 
 	
 	def torchTensorToNumpy(self, image):
-		imageNP = image.cpu().detach().numpy().reshape(image.shape[1], image.shape[2], image.shape[0])
+		#imageNP = (image * 0.5 + 0.5).permute(1,2,0).detach().cpu().numpy()
+		imageNP = (image * 0.5 + 0.5).permute(1,2,0).detach().cpu().numpy()
 		return imageNP
 
 	def __call__(self, genImage, gtImage):
 		self.loss.clear()
-		
 		for pair in range(len(genImage)):
 			i = random.randrange(0, gtImage.shape[1]//3)
 			gt = gtImage[pair][i*3:(i*3+3)]
@@ -30,7 +31,7 @@ class deltaEColorLoss(nn.Module):
 			# Calculating color difference
 			deltaE = np.absolute(color.deltaE_ciede2000(color.rgb2lab(imageGTNP), color.rgb2lab(imageGenNP)))
 			if self.normalize:
-				deltaE /= 255.0
+				deltaE /= 100.0
 
 			# Mean deifference for an image pair
 			self.loss.append(np.mean(deltaE))

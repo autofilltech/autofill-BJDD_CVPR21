@@ -32,7 +32,7 @@ if __name__ == "__main__":
     if options.train:
         BJDD(config).modelTraining(dataSamples=options.dataSamples)
     if options.retrain:
-        BJDD(config).modelTraining(resumeTraning=True, dataSamples=options.dataSamples) 
+        BJDD(config).modelTraining(resumeTraining=True, dataSamples=options.dataSamples) 
     if options.inference:
         noiseSigmaSet = None
         if options.noiseSigma:

@@ -14,19 +14,29 @@ class regularizedFeatureLoss(nn.Module):
 		self.percepRegulator = percepRegulator
 		self.device = device
 
-	def forward(self, x, y):
-		i = random.randrange(0, x.shape[1]-3)
-		# VGG Feature Loss
-		genFeature = self.feature_extractor(x[:,i:i+3,:,:])
-		gtFeature = self.feature_extractor(y[:,i:i+3,:,:])
-		featureLoss = self.loss(genFeature, gtFeature) * self.percepRegulator
-
-		# TV loss
+	def forward(self, x, y = None):
 		size = x.size()
-		h_tv_diff = torch.abs((x[:, :, 1:, :] - x[:, :, :-1, :] - (y[:, :, 1:, :] - y[:, :, :-1, :]))).sum()
-		w_tv_diff = torch.abs((x[:, :, :, 1:] - x[:, :, :, :-1] - (y[:, :, :, 1:] - y[:, :, :, :-1]))).sum()
-		tvloss = (h_tv_diff + w_tv_diff) / size[0] / size[1] / size[2] / size[3]
+		if not y is None:
+			i = random.randrange(0, x.shape[1]//3)
+			# VGG Feature Loss
+			genFeature = self.feature_extractor(x[:,i:i+3,:,:])
+			gtFeature = self.feature_extractor(y[:,i:i+3,:,:])
+			featureLoss = self.loss(genFeature, gtFeature) * self.percepRegulator
+
+			# TV loss
+			h_tv_diff = torch.abs((x[:, :, 1:, :] - x[:, :, :-1, :] - (y[:, :, 1:, :] - y[:, :, :-1, :]))).sum()
+			w_tv_diff = torch.abs((x[:, :, :, 1:] - x[:, :, :, :-1] - (y[:, :, :, 1:] - y[:, :, :, :-1]))).sum()
+			tvloss = (h_tv_diff + w_tv_diff) / size[0] / size[1] / size[2] / size[3]
+		
+		else:
+			tvloss = 0
+			featureLoss = 0
+
+		h_tv_diff2 = torch.abs((x[:, :, 1:, :] - x[:, :, :-1, :] )).sum()
+		w_tv_diff2 = torch.abs((x[:, :, :, 1:] - x[:, :, :, :-1] )).sum()
+		tvloss2 = (h_tv_diff2 + w_tv_diff2) / size[0] / size[1] / size[2] / size[3]
 
 		# Total Loss
-		totalLoss = tvloss * featureLoss 
+		totalLoss = (featureLoss) * tvloss
+		#totalLoss = featureLoss * tvLoss
 		return totalLoss

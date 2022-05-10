@@ -18,6 +18,7 @@ from etaprogress.progress import ProgressBar
 from ptflops import get_model_complexity_info
 from dataTools.customDataloader import *
 from dataTools.b12DataLoader import *
+from dataTools.npzDataLoader import *
 from utilities.torchUtils import *
 from utilities.inferenceUtils import *
 from utilities.aestheticUtils import *
@@ -31,11 +32,15 @@ from torchvision.utils import save_image
 from loss.icPolarLoss import ICPolarLoss
 from loss.icColorLoss import ICColorLoss
 from loss.reconstructionLoss import ReconstructionLoss
+
+torch.random.seed()
+
 class BJDD:
 	def __init__(self, config):
 		
 		# Model Configration 
-		self.gtPath = config['gtPath']
+		self.gtPath1 = config['gtPath1']
+		self.gtPath2 = config['gtPath2']
 		self.checkpointPath = config['checkpointPath']
 		self.logPath = config['logPath']
 		self.testImagesPath = config['testImagePath']
@@ -79,217 +84,312 @@ class BJDD:
 		self.optimizerEG = torch.optim.Adam(self.attentionNet.parameters(), lr=self.learningRate, betas=(self.adamBeta1, self.adamBeta2))
 		self.optimizerED = torch.optim.Adam(self.discriminator.parameters(), lr=self.learningRate, betas=(self.adamBeta1, self.adamBeta2))
 		
-		# Scheduler for Super Convergance
-		self.scheduleLR = None
-		
 	def customTrainLoader(self, overFitTest = False):
 		
-		targetImageList = imageList(self.gtPath)
-		print ("Trining Samples (Input):", self.gtPath, len(targetImageList))
+		targetImageList1 = imageList(self.gtPath1)
+		targetImageList2 = imageList(self.gtPath2)
+		print ("Training Samples (Input1):", self.gtPath1, len(targetImageList1))
+		print ("Training Samples (Input2):", self.gtPath2, len(targetImageList2))
 
-		if overFitTest == True:
-			targetImageList = targetImageList[-1:]
 		if self.dataSamples:
-			targetImageList = targetImageList[:self.dataSamples]
+			targetImageList1 = targetImageList1[:self.dataSamples]
+			targetImageList2 = targetImageList2[:self.dataSamples]
 
-		datasetReadder = b12DatasetReader(   
-												image_list=targetImageList, 
-												imagePathGT=self.gtPath,
-												height = self.imageH,
-												width = self.imageW,
-											)
+		datasetReadder1 = b12DatasetReader(   
+				image_list=targetImageList1, 
+				imagePathGT=self.gtPath1,
+				height = self.imageH,
+				width = self.imageW)
+		datasetReadder2 = b12DatasetReader(
+				image_list=targetImageList2,
+				imagePathGT=self.gtPath1,
+				height = self.imageH,
+				width = self.imageW)
 
-		self.trainLoader = torch.utils.data.DataLoader( dataset=datasetReadder,
-														batch_size=self.batchSize, 
-														shuffle=True
-														)
+		datasetReadder1.all = True
+		self.dataset = datasetReadder2
+
+		self.trainLoader1 = torch.utils.data.DataLoader( dataset=datasetReadder1,
+			batch_size=1, 
+			shuffle=True)
+		self.trainLoader2 = torch.utils.data.DataLoader( dataset=datasetReadder2,
+			batch_size=self.batchSize, 
+			shuffle=True)
 		
-		return self.trainLoader
+		return (self.trainLoader1, self.trainLoader2)
 
 	def imageGrid(self, img):
-		img = self.unNorm(img)
-		if img.shape[1] == 12 and img.shape[0] == 1:
-			img = img.reshape((4,3,img.shape[2], img.shape[3]))
-		return torchvision.utils.make_grid(img ** (1. / 2.4))
+		print(img.min(), img.max())
+		img = self.unNorm(img.detach())
+		print(img.min(), img.max())
+		n,c,h,w = img.shape
+		if img.shape[1] == 16 and img.shape[0] <= 8:
+			img = img.reshape((n, 4, 4, h, w))
+			img = img.permute(0,2,1,3,4)
+			img[:,1] = (img[:,1] + img[:,2]) / 2
+			img[:,2] = img[:,3]
+			img = img[:,:3]
+			img = img.permute(0,2,1,3,4)
+			assert img.shape == (n, 4, 3, h, w)
+			img[:, :, 0, :, :] *= 1 
+			img[:, :, 2, :, :] *= 1
+			img = img.permute(1,0,2,3,4).reshape(n * 4, 3, h, w)
+			return torchvision.utils.make_grid(img.clamp(0,1) ** 0.5, n)
+		elif img.shape[0] <= 8:
+			#img = img[:,:3,:,:] ** (1/2.4)
+			#img = img[:,:,16:208,16:208]
+			#img[ :, 0, :, :] *= 2
+			#img[ :, 2, :, :] *= 3
+			img = img[:,:,:,:] #,img[:,3:6,:,:],img[:,:6:9,:,:],img[:,9:12,:,:]) ** (1/2.4)
+			return torchvision.utils.make_grid(img.clamp(0,1), n)
+		else:
+			img = img.reshape((n, 4, 4, h, w))
+			img = img.permute(0,2,1,3,4)
+			img[:,1] = (img[:,1] + img[:,2]) / 2
+			img[:,2] = img[:,3]
+			img = img[:,:3]
+			img = img.permute(0,2,1,3,4)
+			assert img.shape == (n, 4, 3, h, w)
+			img[:, :, 0, :, :] *= 1
+			img[:, :, 2, :, :] *= 1
+			img = torch.mean(img,dim=1, keepdim=True)
+			print(img.shape)
+			#assert img.shape == (n, 1, 3, h, w)
+			img = img[:,0,:,16:208,16:208] #,img[:,3:6,:,:],img[:,:6:9,:,:],img[:,9:12,:,:]) ** (1/2.4)
+			img = torchvision.utils.make_grid(img.clamp(0,1), 19, padding=0)
+			save_image(img, 'result.png')
+			return img
 
-	def modelTraining(self, resumeTraning=False, overFitTest=False, dataSamples = None):
+
+	def modelTraining(self, resumeTraining=False, overFitTest=False, dataSamples = None):
 		
 		if dataSamples:
 			self.dataSamples = dataSamples 
 
 		# Losses
 		featureLoss = regularizedFeatureLoss(self.device).to(self.device)
-		reconstructionLoss = ReconstructionLoss() #torch.nn.L1Loss().to(self.device)
+		reconstructionLoss1 = torch.nn.L1Loss().to(self.device)
+		reconstructionLoss2 = ReconstructionLoss().to(self.device) #torch.nn.L1Loss().to(self.device)
 		ssimLoss = MSSSIM().to(self.device)
-		#colorLoss = deltaEColorLoss(normalize=True).to(self.device)
-		colorLoss = ICColorLoss().to(self.device)
+		colorLoss1 = deltaEColorLoss(normalize=True).to(self.device)
+		colorLoss2 = ICColorLoss().to(self.device)
 		adversarialLoss = nn.BCELoss().to(self.device)
 		polarLoss = ICPolarLoss().to(self.device)
 
-		# Overfitting Testing
-		if overFitTest == True:
-			customPrint(Fore.RED + "Over Fitting Testing with an arbitary image!", self.barLen)
-			trainingImageLoader = self.customTrainLoader(overFitTest=True)
-			self.interval = 1
-			self.totalEpoch = 100000
-		else:  
-			trainingImageLoader = self.customTrainLoader()
-
-
 		# Resuming Training
-		if resumeTraning == True:
+		if resumeTraining == True:
 			self.modelLoad(True)
-			try:
-				pass#self.modelLoad()
-
-			except:
-				#print()
-				customPrint(Fore.RED + "Would you like to start training from sketch (default: Y): ", textWidth=self.barLen)
-				userInput = input() or "Y"
-				if not (userInput == "Y" or userInput == "y"):
-					exit()
 		else:
-			self.modelLoad(False)
+			#self.modelLoad(False)
+			pass
 
 		# Starting Training
 		customPrint('Training is about to begin using:' + Fore.YELLOW + '[{}]'.format(self.device).upper(), textWidth=self.barLen)
 		
 		# Initiating steps
-		self.totalSteps =  int(len(trainingImageLoader)*self.totalEpoch)
+		stepsPerEpoch = self.dataSamples//self.batchSize
+		self.totalSteps =  int(stepsPerEpoch * self.totalEpoch)
 		startTime = time.time()
 		
-		# Instantiating Super Convergance 
-		#self.scheduleLR = optim.lr_scheduler.OneCycleLR(optimizer=self.optimizerEG, max_lr=self.learningRate, total_steps=self.totalSteps)
 		# Initiating progress bar 
 		bar = ProgressBar(self.totalSteps, max_width=int(self.barLen/2))
 		currentStep = self.startSteps
 		actualLogPath = os.path.join(self.logPath, "default")
 		createDir(actualLogPath)
 		graphIsStored = False
-		while currentStep < self.totalSteps:
+		epoch = currentStep // stepsPerEpoch
+		if resumeTraining:
+			customPrint(Fore.CYAN + "RESUMING EPOCH {}".format(epoch+1), textWidth=self.barLen)
+
+		avgLossED = None
+		avgLossEG = None
+		avgDecay = 0.9
+		while epoch <= self.totalEpoch:
+			trainingImageLoader1, trainingImageLoader2 = self.customTrainLoader()
+			epoch += 1
 			summary = SummaryWriter(actualLogPath)
 	   
 			iterTime = time.time()
-			for LRImages in trainingImageLoader:
-				
-				##############################
-				#### Initiating Variables ####
-				##############################
-				# Updating Steps
-				if currentStep > self.totalSteps:
-			#self.savingWeights(currentStep)
-					customPrint(Fore.YELLOW + "Training Completed Successfully!", textWidth=self.barLen)
-					exit()
+			iter1 = iter(trainingImageLoader1)
+			iter2 = iter(trainingImageLoader2)
+			# Image Generation
+			with torch.no_grad():
+				rawInput = iter1.next()
+				print(rawInput.shape, rawInput.min(), rawInput.max())
+				assert len(rawInput.shape) == 5
+				if len(rawInput.shape) == 5:
+					rawInput = rawInput[0]
+					highResFake = []
+					for i in range(0, rawInput.shape[0], 4):
+						r = rawInput[i:i+4,:,:,:]
+						assert len(r.shape) == 4
+						highResFake.append(self.attentionNet(r))
+					highResFake = torch.cat(highResFake, 0)
+					assert len(highResFake.shape) == 4
+					summary.add_image("Epoch result", self.imageGrid(highResFake), currentStep + 1)
+					summary.flush()
+			if (epoch >= self.totalEpoch):
+				exit(1)
+
+			while currentStep < epoch * stepsPerEpoch:
 				currentStep += 1
+				LRImages2, HRImages2 = iter2.next()
 
 				# Images
-				rawInput = LRImages.to(self.device)
-		#highResReal = HRGTImages.to(self.device)
-			  
+				#raw1 = LRImages1.to(self.device)
+				#gt1  = HRImages1.to(self.device)
+				raw2 = LRImages2.to(self.device)
+				gt2  = HRImages2.to(self.device)
+
 				# GAN Variables
-		#onesConst = torch.ones(rawInput.shape[0], 1).to(self.device)
-		#targetReal = (torch.rand(rawInput.shape[0],1) * 0.5 + 0.7).to(self.device)
-		#targetFake = (torch.rand(rawInput.shape[0],1) * 0.3).to(self.device)
+				onesConst = torch.ones(raw2.shape[0], 1).to(self.device)
+				targetReal = (torch.rand(raw2.shape[0],1) * 0.5 + 0.7).to(self.device)
+				targetFake = (torch.rand(raw2.shape[0],1) * 0.3).to(self.device)
 
-
-				##############################
-				####### Training Phase #######
-				##############################
-	
+				'''
 				# Image Generation
 				with torch.no_grad():
-					highResFake = self.attentionNet(rawInput)
-				
+					assert len(rawInput.shape) == 5
+					if len(rawInput.shape) == 5:
+						assert rawInput.shape[0] == 1
+						highResFake = []
+						rawInput = rawInput.squeeze(0)
+						for i in range(0, rawInput.shape[0], 4):
+							r = rawInput[i:i+4,:,:,:]
+							assert len(r.shape) == 4
+							highResFake.append(self.attentionNet(r))
+						highResFake = torch.cat(highResFake, 0)
+						print("highResFake shape", highResFake.shape)
+						assert len(highResFake.shape) == 4
+					else:
+						highResFake = self.attentionNet(rawInput)
+				'''
+				batch = raw2 #torch.cat((raw1,raw2), 0)
+
 				# Optimaztion of Discriminator
-		#self.optimizerED.zero_grad()
-		#lossED = adversarialLoss(self.discriminator(highResReal), targetReal) + \
-				#		 adversarialLoss(self.discriminator(highResFake.detach()), targetFake)
-		#lossED.backward()
-		#self.optimizerED.step()
+				self.optimizerED.zero_grad()
+				self.optimizerEG.zero_grad()
+				pred = self.attentionNet(batch)
+				#pred1 = pred[:raw1.shape[0]]
+				#pred2 = pred[raw1.shape[0]:]
+				#gt2 = (pred2[:,0:3,:,:] + pred2[:,3:6,:,:] + pred2[:,6:9,:,:] + pred2[:,9:12,:,:]) / 4
+				#gt2x4 = torch.cat((gt2,gt2,gt2,gt2),1)
+				gt = gt2 #torch.cat((gt1, gt2))
 
+				assert torch.isfinite(torch.sum(pred))
+
+				lossED = adversarialLoss(self.discriminator(gt), targetReal) + \
+						adversarialLoss(self.discriminator(pred.detach()), targetFake)
+				lossED.backward()
+				self.optimizerED.step()
+
+				# Optimization of generator part 1
+				Lr1 = reconstructionLoss1(pred, gt)
+				Lf1 = featureLoss(pred, gt) # + featureLoss(gt2)
+				Lc1 = colorLoss1(pred, gt) #colorLoss1(pred1, gt1)
+				generatorContentLoss =  Lr1 + Lf1 + Lc1
+				generatorAdversarialLoss = adversarialLoss(self.discriminator(pred), onesConst)
+				loss1 = generatorContentLoss + 1e-3 * generatorAdversarialLoss
+
+				# Optimization of generator part 2
+				#Lc2 = torch.tensor(0)
+				#Lp2 = polarLoss(pred2)
+				#Lr2 = reconstructionLoss2(raw2, pred2)
+				#loss2 = 0.1 * Lp2 + 0.01 * Lr2
+				#loss = loss1 + loss2
+
+				loss1.backward()
+				self.optimizerEG.step()
 				
-				# Optimization of generator 
-				#self.optimizerEG.zero_grad()
-		#Lr = reconstructionLoss(highResFake, highResReal)
-		#Lf = featureLoss(highResFake, highResReal)
-		#Lc = colorLoss(highResFake, highResReal)
-		#generatorContentLoss =  Lr + Lf + Lc
+				if avgLossED is None: avgLossED = lossED.item()
+				else: avgLossED = avgLossED * avgDecay + lossED.item() * (1-avgDecay)
 
-				# TODO losses
-				#Lp = polarLoss(highResFake) * 100
-				#Lc = colorLoss(highResFake) * 100
-				#Lr = reconstructionLoss(rawInput, highResFake) * 100
-		#Lr = reconstructionLoss(rawInput, highResFake)
-				#Loss = Lr + Lc + Lp
-				#Loss.backward()
-		#generatorAdversarialLoss = adversarialLoss(self.discriminator(highResFake), onesConst)
-		#lossEG = generatorContentLoss + 1e-3 * generatorAdversarialLoss
-		#lossEG.backward()
-		#self.optimizerEG.step()
-
-				# Steps for Super Convergance			
-				#self.scheduleLR.step()
+				if avgLossEG is None: avgLossEG = loss1.item()
+				else: avgLossEG = avgLossEG * avgDecay + loss1.item() * (1-avgDecay)
 
 				##########################
 				###### Model Logger ######
 				##########################   
 
 				# Progress Bar
-				if (currentStep  + 1) % self.interval/2 == 0:
-					bar.numerator = currentStep + 1
-					print(Fore.YELLOW + "Steps |",bar,Fore.YELLOW + "||",end='\r')
-					
+				bar.numerator = currentStep
+				print(Fore.CYAN + "EPOCH {}".format(epoch), 
+						Fore.YELLOW + "| progress:", bar, 
+						Fore.YELLOW + "| Avg Loss: D:{:.4f} G:{:.4f} |".format(
+							avgLossED, avgLossEG),
+						end='\r')
 				
 				# Updating training log
-				if (currentStep + 1) % self.interval == 0:
-					stokes = polarLoss.toStokes(highResFake)
-					print(stokes.shape)
-					yuv = polarLoss.stokesToYuv(stokes)
-					print(yuv.shape)
-					rgb = polarLoss.yuvToRgb(yuv)
-					print(rgb.shape)
-					step = currentStep + 1
-					summary.add_image("Input Images", self.imageGrid(rawInput), step)
-					summary.add_image("Generated Images", self.imageGrid(highResFake), step)
-					summary.add_image("Generated Polar", self.imageGrid(rgb), step)
-			#summary.add_image("GT Images", self.imageGrid(highResReal), step)
-					#summary.add_scalar("Loss Polar", Lp.item(), step)
-			#summary.add_scalar("Loss Discriminator", lossED.item(), step)
-					#summary.add_scalar("Loss Color", Lc.item(), step)
-			#summary.add_scalar("Loss Feature", Lf.item(), step)
-					#summary.add_scalar("Loss Reconstruction", Lr.item(), step)
-					#summary.add_scalar("Loss Total", Loss.item(), step)
+				if currentStep % self.interval == 0:
+					
+					step = currentStep
+					#summary.add_scalar("Loss Polar", Lp2.item(), step)
+					summary.add_scalar("Loss Feature", Lf1.item(), step)
+					#summary.add_scalar("Loss Color 2", Lc2.item(), step)
+					summary.add_scalar("Loss Color 1", Lc1.item(), step)
+					#summary.add_scalar("Loss Reconstruction 2", Lr2.item(), step)
+					summary.add_scalar("Loss Reconstruction 1", Lr1.item(), step)
+					#summary.add_scalar("Loss Total 2", loss2.item(), step)
+					summary.add_scalar("Loss Total 1", loss1.item(), step)
 					'''if not graphIsStored:			
 						summary.add_graph(self.attentionNet, rawInput)
 						summary.add_graph(self.discriminator, highResFake)
 						graphIsStored = True
 					'''
 					summary.flush()
-			#save_image(self.unNorm(rawInput[0]), 'rawinput.png')
-					save_image(self.imageGrid(rgb), "polar.png")
-			#save_image(self.unNorm(highResReal[0][:3]), '1_groundTruth.png')
-			#save_image(self.unNorm(highResFake[0][:3]), '1_modelOutput.png')
-			#save_image(self.unNorm(highResReal[0][3:6]), '2_groundTruth.png')
-			#save_image(self.unNorm(highResFake[0][3:6]), '2_modelOutput.png')
-			#save_image(self.unNorm(highResReal[0][6:9]), '3_groundTruth.png')
-			#save_image(self.unNorm(highResFake[0][6:9]), '3_modelOutput.png')
-			#save_image(self.unNorm(highResReal[0][9:12]), '4_groundTruth.png')
-			#save_image(self.unNorm(highResFake[0][9:12]), '4_modelOutput.png')
+					#save_image(self.unNorm(rawInput[0]), 'rawinput.png')
+					#save_image(self.unNorm(highResReal[0][:3]), '1_groundTruth.png')
+					#save_image(self.unNorm(highResFake[0][:3]), '1_modelOutput.png')
+					#save_image(self.unNorm(highResReal[0][3:6]), '2_groundTruth.png')
+					#save_image(self.unNorm(highResFake[0][3:6]), '2_modelOutput.png')
+					#save_image(self.unNorm(highResReal[0][6:9]), '3_groundTruth.png')
+					#save_image(self.unNorm(highResFake[0][6:9]), '3_modelOutput.png')
+					#save_image(self.unNorm(highResReal[0][9:12]), '4_groundTruth.png')
+					#save_image(self.unNorm(highResFake[0][9:12]), '4_modelOutput.png')
 
-
-					# TODO save weights
 					# Saving Weights and state of the model for resume training 
-			#self.savingWeights(currentStep)
+					#self.savingWeights(currentStep)
 				
-		#if (currentStep + 1) % (self.interval ** 2) == 0 : 
-			#print("\n")
-			#self.savingWeights(currentStep + 1, True)
-					#self.modelInference(validation=True, steps = currentStep + 1)
-			#eHours, eMinutes, eSeconds = timer(iterTime, time.time())
-			#print (Fore.CYAN +'Steps [{}/{}] | Time elapsed [{:0>2}:{:0>2}:{:0>2}] | LossC: {:.2f}, LossP : {:.2f}, LossEG: {:.2f}, LossED: {:.2f}' 
-			#		.format(currentStep + 1, self.totalSteps, eHours, eMinutes, eSeconds, colorLoss(highResFake, highResReal), featureLoss(highResFake, highResReal),lossEG, lossED))
-					
-   
+				if (currentStep) % (self.interval ** 2) == 0 : 
+					print()	
+					stokes = polarLoss.toStokes(pred)
+					yuv = polarLoss.stokesToYuv(stokes)
+					rgb = polarLoss.yuvToRgb(yuv)
+	
+					summary.add_image("Input", self.imageGrid(batch), step)
+					summary.add_image("Ground Truth", self.imageGrid(gt), step)
+					summary.add_image("Generated Images", self.imageGrid(pred), step)
+					summary.add_image("Generated Polar", self.imageGrid(rgb), step)
+					summary.flush()
+					self.savingWeights(currentStep, True)
+			print()
+			customPrint(Fore.YELLOW + "EPOCH {} COMPLETE".format(epoch), textWidth=self.barLen)
+			summary.close()
+			#exit()
+			'''
+			# Image Generation
+			with torch.no_grad():
+				self.dataset.all = True
+				rawInput = iter2.next()
+				print(rawInput.shape)
+				assert len(rawInput.shape) == 5
+				if len(rawInput.shape) == 5:
+					rawInput = rawInput[0]
+					highResFake = []
+					for i in range(0, rawInput.shape[0], 6):
+						r = rawInput[i:i+6,:,:,:]
+						assert len(r.shape) == 4
+						highResFake.append(self.attentionNet(r))
+					highResFake = torch.cat(highResFake, 0)
+					assert len(highResFake.shape) == 4
+					summary.add_image("Epoch result", self.imageGrid(highResFake))
+					summary.flush()
+				self.dataset.all = False
+			'''
+		self.savingWeights(currentStep)
+		customPrint(Fore.GREEN + "TRAINING COMPLETE", textWidth=self.barLen)
+		while True: time.sleep(1)
+
 	def modelInference(self, testImagesPath = None, outputDir = None, resize = None, validation = None, noiseSet = None, steps = None):
 		if not validation:
 			self.modelLoad(True)
@@ -351,13 +451,15 @@ class BJDD:
 	
 	def savingWeights(self, currentStep, duplicate=None):
 		# Saving weights 
+		
+		if duplicate:
+			customPrint(Fore.GREEN + "Saving weights for step {}".format(currentStep), textWidth=self.barLen)
 		checkpoint = { 
-						'step' : currentStep + 1,
+						'step' : currentStep,
 						'stateDictEG': self.attentionNet.state_dict(),
 						'stateDictED': self.discriminator.state_dict(),
 						'optimizerEG': self.optimizerEG.state_dict(),
 						'optimizerED': self.optimizerED.state_dict(),
-						'schedulerLR': self.scheduleLR
 						}
 		saveCheckpoint(modelStates = checkpoint, path = self.checkpointPath, modelName = self.modelName)
 		if duplicate:
