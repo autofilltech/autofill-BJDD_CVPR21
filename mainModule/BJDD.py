@@ -220,8 +220,8 @@ class BJDD:
 				if len(rawInput.shape) == 5:
 					rawInput = rawInput[0]
 					highResFake = []
-					for i in range(0, rawInput.shape[0], 4):
-						r = rawInput[i:i+4,:,:,:]
+					for i in range(0, rawInput.shape[0], 1):
+						r = rawInput[i:i+1,:,:,:]
 						assert len(r.shape) == 4
 						highResFake.append(self.attentionNet(r))
 					highResFake = torch.cat(highResFake, 0)

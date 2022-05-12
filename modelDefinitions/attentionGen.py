@@ -3,13 +3,15 @@ import torch.nn.functional as F
 import torch
 from torchsummary import summary
 from modelDefinitions.basicBlocks import *	
-
+#from modules.common import *
+#from modules.attention import *
 class attentionNet(nn.Module):
-	def __init__(self, inputC, outputC, squeezeFilters = 64, expandFilters = 64, depth = 3):
+	def __init__(self, inputC, outputC, squeezeFilters = 8, expandFilters = 16, depth = 3):
 		super(attentionNet, self).__init__()
 		k = 3
 		# Input Block
-		self.inputConv = nn.Conv2d(inputC, squeezeFilters, k,1,k//2)
+		self.inputConv = nn.Conv2d(inputC, squeezeFilters, 7, stride=1, padding=7//2)
+
 		depthAttenBlock = []
 		for i in range (depth):
 			depthAttenBlock.append(attentionGuidedResBlock(squeezeFilters, expandFilters))

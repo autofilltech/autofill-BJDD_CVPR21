@@ -24,14 +24,9 @@ class SALayer(nn.Module):
 	def __init__(self, kernel_size = 3, bias = False):
 		super(SALayer, self).__init__()
 		self.body = nn.Sequential(
+				FeaturePool2d(),
 				nn.Conv2d(2, 1, kernel_size, padding = kernel_size // 2, bias = bias)
 				nn.Sigmoid())
-	def forward(self, x):
-		xavg = torch.mean(x, dim = -3, keepdim = True)
-		xmax = torch.max(x, dim = -3, keepdim = True)
-		x = torch.cat((xavg, xmax), dim = -3)
-		y = self.body(x)
-		return y
 
 # Attention Guided Residual Block
 class AttResBlock(nn.Module):
@@ -52,4 +47,11 @@ class AttResBlock(nn.Module):
 		a = self.datt(x)
 		y = self.body(x)
 		return x + y + a
+
+class FeaturePool2d(nn.Module):
+	def forward(self, x):
+		xmax,_ = torch.max(x, dim=-3, keep_dim=True)
+		xmean = torch.mean(x, dim=-3, keep_dim=True)
+		return torch.cat((xmax, xmean), dim=1)
+
 
