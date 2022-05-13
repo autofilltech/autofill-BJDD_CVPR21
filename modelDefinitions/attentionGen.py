@@ -63,7 +63,6 @@ def initWeights(module):
 class AttentionGenerator(nn.Module):
 	def __init__(self, inputC, outputC, squeezeFilters = 32, expandFilters = 64, depth = 3):
 		super(AttentionGenerator, self).__init__()
-		k = 3
 		
 		sf = squeezeFilters
 		self.da1 = AttentionConvertBlock    (inputC, sf, 3)
@@ -71,7 +70,6 @@ class AttentionGenerator(nn.Module):
 		self.da3 = AttentionDownsampleBlock (sf*2, sf*4, 3)
 		self.da4 = AttentionUpsampleBlock   (sf*4, sf*2, 3)
 		self.da5 = AttentionUpsampleBlock   (sf*2, sf*1, 3)
-		
 		self.convOut = nn.Conv2d(sf,outputC,1,)
 		
 		self.apply(initWeights)
