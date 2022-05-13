@@ -80,13 +80,15 @@ class ChannelAttentionBlock(nn.Sequential):
 class RCSABlock(nn.Sequential):
 	def __init__(self, channels):
 		super(RCSABlock, self),__init__(
+			ResBlock(channels, channels, 3),
+			ResBlock(channels, channels, 3),
 			MuxAdd(
 				Identity(),
 				nn.Sequential(
 					MuxMul(
 						ChannelAttentionBlock(channels),
-						Identity),
+						Identity()),
 					MuxMul(
 						SpatialAttentionBlock(),
-						Identity)))
+						Identity())))
 

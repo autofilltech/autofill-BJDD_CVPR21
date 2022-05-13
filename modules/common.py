@@ -20,7 +20,7 @@ class SeparableConv2d(nn.Sequential):
 		super(SeparableConv2D, self).__init__(
 
 class ResBlock(nn.Sequential):
-	def __init__(self, channels, intermediate, kernel_size, stride, padding, dilation, groups, bias):
+	def __init__(self, channels, intermediate, kernel_size, stride=1, padding=0, dilation=1, groups=1, bias=True):
 		super(ResBlock, self).__init__(
 			MuxAdd(
 				Identity(),
