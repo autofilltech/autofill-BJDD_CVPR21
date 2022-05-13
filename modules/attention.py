@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
+from modules.common import *
+from modules.reduce import *
 
 # Squeeze and Excitation Layer
 class SqueezeExcitationLayer(nn.Module):
@@ -24,7 +26,7 @@ class SpatialAttentionBlock(nn.Module):
 	def __init__(self, kernel_size = 3, bias = False):
 		super(SpatialAttentionBlock, self).__init__()
 		self.body = nn.Sequential(
-				MuxCat(
+				ReduceCat(
 					ChannelMaxPool2d(),
 					ChannelAvgPool2d(),
 					dim = -3),
@@ -35,7 +37,7 @@ class SpatialAttentionBlock(nn.Module):
 class AttentionResBlock(nn.Sequential):
 	def __init__(self, channels = 32, expand = 64):
 		super(AttentionResBlock, self).__init__(
-			MuxAdd(
+			ReduceAdd(
 				Identity(),
 				SqueezeExcitationLayer(channels),
 				nn.Sequential(
@@ -61,7 +63,7 @@ class ChannelAvgPool2d(nn.Module):
 class ChannelAttentionBlock(nn.Sequential):
 	def __init__(self, channels, reduction=8, bias=False):
 		super(ChannelAttentionBlock, self).__init__(
-			MuxAdd(
+			ReduceAdd(
 				nn.Sequential(
 					nn.MaxPool2d(2),
 					nn.Conv2d(channels, channels//reduction, 1, bias=bias),
@@ -82,13 +84,13 @@ class RCSABlock(nn.Sequential):
 		super(RCSABlock, self),__init__(
 			ResBlock(channels, channels, 3),
 			ResBlock(channels, channels, 3),
-			MuxAdd(
+			ReduceAdd(
 				Identity(),
 				nn.Sequential(
-					MuxMul(
+					ReduceMul(
 						ChannelAttentionBlock(channels),
 						Identity()),
-					MuxMul(
+					ReduceMul(
 						SpatialAttentionBlock(),
 						Identity())))
 

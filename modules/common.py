@@ -1,10 +1,10 @@
 import torch
 import torch.nn as nn
-import numpy as np
+from modules.reduce import *
 
 class SeparableConv2d(nn.Sequential):
 	def __int__(self, features_in, features_out, kernel_size=1, stride=1, padding=0, dilation=1, bias=False):
-		params = [
+		super(SeparableConv2D, self).__init__(
 			nn.Conv2d(
 				features_in, features_in, kernel_size, 
 				stride, padding, dilation, 
@@ -12,17 +12,12 @@ class SeparableConv2d(nn.Sequential):
 			nn.Conv2d(
 				features_in, features_out, 1,
 				stride=1, padding=0, dilation=1,
-				bias=bias)]
-		if bn:
-			params.append(bn())
-		if act == nn.PReLU:
-		
-		super(SeparableConv2D, self).__init__(
+				bias=bias))
 
 class ResBlock(nn.Sequential):
 	def __init__(self, channels, intermediate, kernel_size, stride=1, padding=0, dilation=1, groups=1, bias=True):
 		super(ResBlock, self).__init__(
-			MuxAdd(
+			ReduceAdd(
 				Identity(),
 				nn.Sequential(
 					nn.Conv2d(
@@ -43,53 +38,47 @@ class View(nn.Module):
 	def forward(self, x):
 		return x.view(*self.shape)
 
+class Reshape(nn.Module):
+	def __init__(self, *args):
+		super(Reshape, self).__init__()
+		self.shape = args
+	
+	def forward(self, x):
+		return x.reshape(*self.shape)
+
 class Identity(nn.Module):
 	def forward(self, x):
 		return x
 
-class MuxAdd(nn.Module):
-	def __init__(self, *args, **kwargs):
-		super(MuxSum, self).__init__()
-		self.mux = args
-		
-	def forward(self, x):
-		outputs = []
-		for module in self.mux:
-			outputs.append(module(x))
-		return outputs.sum()
+class PatchUnshuffle(nn.Module):
+	def __init__(self, patches):
+		super(PatchUnshuffle, self).__init__()
+		self.patches = patches
 
-class MuxMul(nn.Module):
-	def __init__(self, *args, **kwargs):
-		super(MuxSum, self).__init__()
-		self.mux = args
-		
-	def forward(self, x):
-		outputs = []
-		for module in self.mux:
-			outputs.append(module(x))
-		return np.prod(outputs)
+	def forward(self,x):
+		ny,nx = self.patches
+		n,c,h,w = x.shape
+		assert 0 == h % ny
+		assert 0 == w % nx
+		sy = h // ny
+		sx = w // nx
+		y = x.unfold(2, sy, sy).unfold(3, sx, sx)
+		y = y.reshape(n, c * ny * nx, sy, sx)
+		return y
 
-class MuxSum(nn.Module):
-	def __init__(self, *args, **kwargs):
-		super(MuxSum, self).__init__()
-		self.mux = args
-		self.dim = kwargs["dim"] if "dim" in kwargs else 0
-		
-	def forward(self, x):
-		outputs = []
-		for module in self.mux:
-			outputs.append(module(x))
-		return torch.sum(outputs, dim=self.dim)
+class PatchShuffle(nn.Module):
+	def __init__(self,patches):
+		super(PatchShuffle, self).__init__()
+		self.patches = patches
 
-class MuxCat(nn.Module):
-	def __init__(self, *args, **kwargs):
-		super(MuxCat, self).__init__()
-		self.mux = args
-		self.dim = kwargs["dim"] if "dim" in kwargs else 0
-		
 	def forward(self, x):
-		outputs = []
-		for module in self.mux:
-			outputs.append(module(x))
-		return torch.cat(outputs, dim=self.dim)
-
+		ny,nx = self.patches
+		n,c,h,w = x.shape
+		sy = h * ny
+		sx = w * nx
+		nc = c // (ny * nx)
+		y = x.view(n, nc, ny, nx, h, w)
+		y = y.permute(0,1,2,4,3,5).reshape(n, nc, sy, sx)
+		return y
+		y = y.fold(3, w, w).fold(2, h, h)
+		return y

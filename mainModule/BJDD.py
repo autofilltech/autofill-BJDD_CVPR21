@@ -33,7 +33,18 @@ from loss.icPolarLoss import ICPolarLoss
 from loss.icColorLoss import ICColorLoss
 from loss.reconstructionLoss import ReconstructionLoss
 
+from modules.common import *
+from modules.reduce import *
+
 torch.random.seed()
+
+a = torch.arange(4 * 3 * 16 * 16).view(4,3,16,16)
+b = PatchUnshuffle((2,4))(a)
+print(b.shape)
+c = PatchShuffle((2,4))(b)
+print(c.shape)
+print((a==c).all())
+exit()
 
 class BJDD:
 	def __init__(self, config):
