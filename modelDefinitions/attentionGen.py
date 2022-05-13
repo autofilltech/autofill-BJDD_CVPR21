@@ -22,10 +22,7 @@ class AttentionConvertBlock(nn.Sequential):
 class AttentionDownsampleBlock(nn.Sequential):
 	def __init__(self, channels_in, channels_out, kernel_size):
 		super(AttentionDownsampleBlock,self).__init__(
-			nn.Conv2d(
-				channels_in, channels_out, kernel_size, 
-				stride=channels_out//channels_in, 
-				padding=kernel_size//2),
+			Downsample2d(channels_out//channels_in, channels_in, channels_out, kernel_size),
 			nn.LeakyReLU(),
 			AttentionResBlock(channels_out),
 			AttentionResBlock(channels_out),
@@ -36,16 +33,21 @@ class AttentionDownsampleBlock(nn.Sequential):
 class AttentionUpsampleBlock(nn.Sequential):
 	def __init__(self, channels_in, channels_out, kernel_size):
 		super(AttentionUpsampleBlock,self).__init__(
-			nn.Conv2d(
-				channels_in, channels_out, kernel_size, 
-				stride=1, padding=kernel_size//2),
+			Upsample2d(
+				channels_in//channels_out, 
+				channels_in, channels_out, 
+				kernel_size),
 			nn.LeakyReLU(),
-			nn.Conv2d(
-				channels_out, channels_out * ((channels_in//channels_out) ** 2), 
-				kernel_size, stride = 1, padding=kernel_size//2),
-			nn.BatchNorm2d(channels_out * ((channels_in//channels_out) ** 2)),
-			nn.PixelShuffle(channels_in//channels_out),
-			nn.PReLU(),
+			#nn.Conv2d(
+			#	channels_in, channels_out, kernel_size, 
+			#	stride=1, padding=kernel_size//2),
+			#nn.LeakyReLU(),
+			#nn.Conv2d(
+			#	channels_out, channels_out * ((channels_in//channels_out) ** 2), 
+			#	kernel_size, stride = 1, padding=kernel_size//2),
+			#nn.BatchNorm2d(channels_out * ((channels_in//channels_out) ** 2)),
+			#nn.PixelShuffle(channels_in//channels_out),
+			#nn.PReLU(),
 			AttentionResBlock(channels_out),
 			AttentionResBlock(channels_out),
 			AttentionResBlock(channels_out),

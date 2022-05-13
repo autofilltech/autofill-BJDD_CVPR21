@@ -38,6 +38,10 @@ from modules.reduce import *
 
 torch.random.seed()
 
+g = AttentionGenerator(1, 16)
+summary(g, (1, 224, 224), device="cpu")
+exit()
+
 class BJDD:
 	def __init__(self, config):
 		
