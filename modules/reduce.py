@@ -25,20 +25,6 @@ class ReduceMul(nn.Module):
 			y = a if y is None else y * a
 		return y
 
-class ReduceSum(nn.Module):
-	def __init__(self, *args, **kwargs):
-		super(ReduceSum, self).__init__()
-		self.args = args
-		self.dim = kwargs["dim"] if "dim" in kwargs else 0
-		
-	def forward(self, x):
-		outputs = []
-		for a in self.args:
-			if not isinstance(a, torch.Tensor): a = a(x)
-			outputs.append(a)
-		y = torch.cat(a, dim=self.dim)
-		return torch.sum(y, dim=self.dim)
-
 class ReduceCat(nn.Module):
 	def __init__(self, *args, **kwargs):
 		super(ReduceCat, self).__init__()
