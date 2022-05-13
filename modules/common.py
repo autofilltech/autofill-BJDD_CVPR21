@@ -19,6 +19,22 @@ class SeparableConv2d(nn.Sequential):
 		
 		super(SeparableConv2D, self).__init__(
 
+class ResBlock(nn.Sequential):
+	def __init__(self, channels, intermediate, kernel_size, stride, padding, dilation, groups, bias):
+		super(ResBlock, self).__init__(
+			MuxAdd(
+				Identity(),
+				nn.Sequential(
+					nn.Conv2d(
+						channels_in, intermediate, kernel_size, 
+						stride, padding, dilation, groups,
+						bias = bias),
+					nn.ReLU(),
+					nn.Conv2d(
+						intermediate, channels_in, kernel_size,
+						stride, padding, dilation, groups,
+						bias = bias))))
+
 class View(nn.Module):
 	def __init__(self, *args):
 		super(View, self).__init__()
