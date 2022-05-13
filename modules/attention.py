@@ -22,16 +22,22 @@ class SqueezeExcitationLayer(nn.Module):
 		return x + y.expand_as(x)
 
 # Spatial Attention Layer
-class SpatialAttentionBlock(nn.Module):
+class SpatialAttentionLayer(nn.Sequential):
 	def __init__(self, kernel_size = 3, bias = False):
-		super(SpatialAttentionBlock, self).__init__()
-		self.body = nn.Sequential(
-				ReduceCat(
-					ChannelMaxPool2d(),
-					ChannelAvgPool2d(),
-					dim = -3),
-				nn.Conv2d(2, 1, kernel_size, padding = kernel_size // 2, bias = bias)
-				nn.Sigmoid())
+		super(SpatialAttentionLayer, self).__init__(
+			ReduceCat(
+				ChannelMaxPool2d(),
+				ChannelAvgPool2d(),
+				dim = -3),
+			nn.Conv2d(2, 1, kernel_size, padding = kernel_size // 2, bias = bias),
+			nn.Sigmoid())
+
+class SpatialAttentionBlock(nn.Sequential):
+	def __init__(self, channels, kernel_size = 3, bias = False):
+		super(SpatialAttentionBlock, self).__init__(
+			ReduceMul(
+				SpatialAttentionLayer(kernel_size, bias),
+				nn.Conv2d(channels, channels, 3, padding=1)))
 
 # Attention Guided Residual Block
 class AttentionResBlock(nn.Sequential):
@@ -44,7 +50,7 @@ class AttentionResBlock(nn.Sequential):
 					nn.Conv2d(channels, expand, 1),
 					nn.BatchNorm2d(expand),
 					nn.ReLU(inplace = True),
-					nn.Conv2d(expand, expand, kernel_size = 3),
+					nn.Conv2d(expand, expand, kernel_size=3, padding=1),
 					nn.BatchNorm2d(expand),
 					nn.ReLU(inplace = True),
 					nn.Conv2d(expand, channels, 1))))
@@ -52,17 +58,17 @@ class AttentionResBlock(nn.Sequential):
 
 class ChannelMaxPool2d(nn.Module):
 	def forward(self, x):
-		xmax,_ = torch.max(x, dim=-3, keep_dim=True)
+		xmax,_ = torch.max(x, dim=-3, keepdim=True)
 		return xmax
 
 class ChannelAvgPool2d(nn.Module):
 	def forward(self, x):
-		xmean = torch.mean(x, dim=-3, keep_dim=True)
+		xmean = torch.mean(x, dim=-3, keepdim=True)
 		return xmean
 
-class ChannelAttentionBlock(nn.Sequential):
+class ChannelAttentionLayer(nn.Sequential):
 	def __init__(self, channels, reduction=8, bias=False):
-		super(ChannelAttentionBlock, self).__init__(
+		super(ChannelAttentionLayer, self).__init__(
 			ReduceAdd(
 				nn.Sequential(
 					nn.MaxPool2d(2),
@@ -88,9 +94,9 @@ class RCSABlock(nn.Sequential):
 				Identity(),
 				nn.Sequential(
 					ReduceMul(
-						ChannelAttentionBlock(channels),
+						ChannelAttentionLayer(channels),
 						Identity()),
 					ReduceMul(
-						SpatialAttentionBlock(),
-						Identity())))
+						SpatialAttentionLayer(),
+						Identity()))))
 

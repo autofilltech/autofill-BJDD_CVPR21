@@ -14,7 +14,7 @@ import time
 import colorama
 from colorama import Fore, Style
 from etaprogress.progress import ProgressBar
-#from torchsummary import summary
+from torchsummary import summary
 from ptflops import get_model_complexity_info
 from dataTools.customDataloader import *
 from dataTools.b12DataLoader import *
@@ -80,7 +80,7 @@ class BJDD:
 
 		# Preapring model(s) for GPU acceleration
 		self.device =  torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-		self.attentionNet = attentionNet(self.inputC, self.outputC).to(self.device)
+		self.attentionNet = AttentionGenerator(self.inputC, self.outputC).to(self.device)
 		self.discriminator = attentiomDiscriminator(self.outputC).to(self.device)
 
 		# Optimizers
