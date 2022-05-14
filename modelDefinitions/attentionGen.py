@@ -6,6 +6,7 @@ from modules.common import *
 from modules.reduce import *
 from modules.attention import *
 
+
 class AttentionConvertBlock(nn.Sequential):
 	def __init__(self, channels_in, channels_out, kernel_size):
 		super(AttentionConvertBlock,self).__init__(
