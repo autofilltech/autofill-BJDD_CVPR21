@@ -35,8 +35,13 @@ from loss.reconstructionLoss import ReconstructionLoss
 
 from modules.common import *
 from modules.reduce import *
+from modules.naf import NAFNet, NAFSRNet
 
 torch.random.seed()
+
+g = NAFSRNet(2, 16, 2)
+summary(g, (32, 64, 64), device="cpu")
+exit()
 
 g = AttentionGenerator(1, 16)
 summary(g, (1, 224, 224), device="cpu")

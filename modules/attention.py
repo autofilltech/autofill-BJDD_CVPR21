@@ -100,3 +100,29 @@ class RCSABlock(nn.Sequential):
 						SpatialAttentionLayer(),
 						Identity()))))
 
+# TODO make number of inputs variable.. ModuleList, register_parameter
+class CrossAttentionBlock(nn.Module):
+	def __init__(self, channels):
+		super(CrossAttentionBlock, self).__init__()
+		self.scale = channels ** -0.5
+		self.normA = LayerNorm2d(channels)
+		self.normB = LayerNorm2d(channels)
+		self.proj1A = nn.Conv2d(channels, channels, 1)
+		self.proj1B = nn.Conv2d(channels, channels, 1)
+		self.beta  = nn.Parameter(torch.zeros((1,channels,1,1)), requires_grad=True)
+		self.gamma = nn.Parameter(torch.zeros((1,channels,1,1)), requires_grad=True)
+		self.proj2A = nn.Conv2d(channels, channels, 1)
+		self.proj2B = nn.Conv2d(channels, channels, 1)
+
+	def forward(self, x):
+		xA, xB = x.chunk(2, dim=1)
+		qA = self.proj1A(self.normA(xA)).permute(0,2,3,1)
+		qB = self.proj1B(self.normB(xB)).permute(0,2,1,3)
+		vA = self.proj2A(xA).permute(0,2,3,1)
+		vB = self.proj2B(xB).permute(0,2,3,1)
+		att = torch.matmul(qA, qB) * self.scale
+		fBA = torch.matmul(torch.softmax(att, dim=-1), vB)
+		fAB = torch.matmul(torch.softmax(att.permute(0,1,3,2), dim=-1), vA)
+		fBA = fBA.permute(0,3,1,2) * self.beta
+		fAB = fAB.permute(0,3,1,2) * self.gamma
+		return torch.cat((xA + fBA, xB + fAB), dim=1)
