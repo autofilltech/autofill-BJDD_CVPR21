@@ -45,10 +45,10 @@ class NAFBlock(nn.Module):
 		x = self.conv5(x)
 		return y + x * self.gamma
 
-class NAFSRBlock(nn.Module):
+class NAFSSRBlock(nn.Module):
 	def __init__(self, channels, views=2):
 		assert views == 2
-		super(NAFSRBlock, self).__init__()
+		super(NAFSSRBlock, self).__init__()
 		self.block = NAFBlock(channels)
 		self.fusion = CrossAttentionBlock(channels) # 2 views only
 		self.views = views
@@ -117,11 +117,11 @@ class NAFNet(nn.Module):
 		return x[:,:,:h,:w]
 
 
-class NAFSRNet(nn.Module):
+class NAFSSRNet(nn.Module):
 	def __init__(self, scale_up, in_channels, views=2, width=48, num_blocks=16):
-		super(NAFSRNet, self).__init__()
+		super(NAFSSRNet, self).__init__()
 		self.conv1 = nn.Conv2d(in_channels, width, 3, padding=1)
-		self.body = nn.Sequential(*[NAFSRBlock(width) for _ in range(num_blocks)])
+		self.body = nn.Sequential(*[NAFSSRBlock(width) for _ in range(num_blocks)])
 		self.up = Upsample2d(2, width, in_channels, kernel_size=3)
 		self.scale_up = scale_up
 		self.views = views
@@ -129,6 +129,7 @@ class NAFSRNet(nn.Module):
 	def forward(self, x):
 		x_hr = F.interpolate(x, scale_factor=self.scale_up, mode='bilinear')
 		views = x.chunk(self.views, dim=1)
+		print(views[0].shape, views[1].shape)
 		features = torch.cat([self.conv1(v) for v in views], dim=1)
 		y = self.body(features)
 		y = y.chunk(self.views, dim=1)
