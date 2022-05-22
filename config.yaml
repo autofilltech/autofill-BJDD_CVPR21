@@ -15,9 +15,7 @@ train:
     width: 16
     blocks: 8
 
-  path: 
-    input: "./input"
-    target: "./target"
+  datapath: "/home/limitz/projects/NAFNet/datasets/StereoSR/test/KITTI2012/hr"
 
   optim:
     type: Adam

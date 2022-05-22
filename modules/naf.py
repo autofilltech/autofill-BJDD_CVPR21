@@ -129,7 +129,6 @@ class NAFSSRNet(nn.Module):
 	def forward(self, x):
 		x_hr = F.interpolate(x, scale_factor=self.scale_up, mode='bilinear')
 		views = x.chunk(self.views, dim=1)
-		print(views[0].shape, views[1].shape)
 		features = torch.cat([self.conv1(v) for v in views], dim=1)
 		y = self.body(features)
 		y = y.chunk(self.views, dim=1)

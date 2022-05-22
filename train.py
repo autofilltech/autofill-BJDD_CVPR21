@@ -12,6 +12,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+from   torch.utils.data import DataLoader
 import torchvision
 import torchvision.transforms as T
 from   torchsummary import summary
@@ -20,6 +21,8 @@ from   torch.utils.tensorboard import SummaryWriter
 from modules.common import *
 from modules.reduce import *
 from modules.naf import NAFNet, NAFSSRNet
+
+from datasets.ssr import SSRDataset
 
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -31,7 +34,6 @@ class Trainer:
 		configPath = "config.yaml"
 		with open(configPath,"r") as stream:
 			self.config = yaml.load(stream, Loader=yaml.FullLoader)
-		print(self.config)
 
 		self.name = self.config["name"]
 		self.checkpointPath = "./checkpoints"
@@ -54,6 +56,8 @@ class Trainer:
 				self.config["train"]["sched"]["milestones"],
 				self.config["train"]["sched"]["gamma"])
 
+		self.dataset = SSRDataset(self.config["train"]["datapath"], 128, 
+				length = self.config["train"]["numBatches"] * self.config["train"]["batchSize"])
 		# warmup
 		t = torch.rand((
 				self.config["train"]["batchSize"],
@@ -69,10 +73,15 @@ class Trainer:
 		for epoch in pbEpoch:
 
 			#train
+			loader = DataLoader(self.dataset, 
+				self.config["train"]["batchSize"],
+				shuffle = True)
+			loader = iter(loader)
+
 			pbBatch = tqdm(range(self.batchesPerEpoch), position=1, desc="BATCH", leave=False)
 			for batch in pbBatch:
-				time.sleep(0.01)
-				#pred = model(batch)
+				lr, hr = loader.next()
+				pred = self.model(lr)
 				self.optim.step()
 				pbEpoch.refresh()
 			
