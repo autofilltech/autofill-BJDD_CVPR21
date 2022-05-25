@@ -28,7 +28,7 @@ class Trainer:
 	def __init__(self):
 		torch.random.seed()
 		
-		configPath = "config.yml"
+		configPath = "config.yaml"
 		with open(configPath,"r") as stream:
 			self.config = yaml.load(stream, Loader=yaml.FullLoader)
 		print(self.config)
