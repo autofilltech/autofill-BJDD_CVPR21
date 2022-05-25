@@ -30,7 +30,8 @@ class LayerNormFunction(torch.autograd.Function):
 		mu_g = g.mean(1, keepdim=True)
 		mu_gy = (g * y).mean(1, keepdim=True)
 		gx = 1. / torch.sqrt(var+eps) * (g - y * mu_gy - mu_g)
-		return gx, (grad_output * y).sum(dim=(3,2,0)), grad_output.sum(dim=(3,2,0)), None
+		#return gx, (grad_output * y).sum(dim=(3,2,0)), grad_output.sum(dim=(3,2,0)), None
+		return gx, (grad_output * y).sum(dim=3).sum(dim=2).sum(dim=0), grad_output.sum(dim=3).sum(dim=2).sum(dim=0), None
 
 #https://github.com/megvii-research/NAFNet
 class LayerNorm2d(nn.Module):

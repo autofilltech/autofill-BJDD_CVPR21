@@ -46,7 +46,7 @@ class Trainer:
 				self.config["train"]["channels"],
 				self.config["train"]["views"],
 				self.config["train"]["model"]["width"],
-				self.config["train"]["model"]["blocks"])
+				self.config["train"]["model"]["blocks"]).cuda()
 		
 		self.optim = optim.Adam(self.model.parameters(), 
 				self.config["train"]["optim"]["lr"], 
@@ -64,10 +64,14 @@ class Trainer:
 				self.config["train"]["channels"] *
 				self.config["train"]["views"],
 				self.config["train"]["height"],
-				self.config["train"]["width"]))
+				self.config["train"]["width"])).cuda()
 		self.model(t)
 
 	def train(self):
+
+		lossFunction = nn.MSELoss().cuda()
+		mse100 = []
+
 		r = range(self.startEpoch, self.numEpochs)
 		pbEpoch = tqdm(r, initial=self.startEpoch, total=self.numEpochs, position=0, desc="EPOCH")
 		for epoch in pbEpoch:
@@ -81,9 +85,31 @@ class Trainer:
 			pbBatch = tqdm(range(self.batchesPerEpoch), position=1, desc="BATCH", leave=False)
 			for batch in pbBatch:
 				lr, hr = loader.next()
+				lr = lr.cuda()
+				hr = hr.cuda()
+
+				self.optim.zero_grad()
+
 				pred = self.model(lr)
+				loss = lossFunction(pred, hr)
+				loss.backward()
 				self.optim.step()
+				mse1 = loss.item()
+				
+				mse100.append(mse1)
+				if len(mse100) > 100: mse100.pop(0)
+				avg = sum(mse100) / len(mse100)
+				pbBatch.set_postfix({"MSE": mse1, "AVG": avg})
 				pbEpoch.refresh()
+
+				# for testing: save images
+				grid1 = torchvision.utils.make_grid(torch.cat(lr.detach().cpu().chunk(2,dim=1)))
+				grid2 = torchvision.utils.make_grid(torch.cat(hr.detach().cpu().chunk(2,dim=1)))
+				grid3 = torchvision.utils.make_grid(torch.cat(pred.detach().cpu().chunk(2,dim=1)))
+				torchvision.io.write_png((grid1*255).to(torch.uint8), "grid1.png")
+				torchvision.io.write_png((grid2*255).to(torch.uint8), "grid2.png")
+				torchvision.io.write_png((grid3*255).to(torch.uint8), "grid3.png")
+
 			
 			#validate
 			with torch.no_grad():

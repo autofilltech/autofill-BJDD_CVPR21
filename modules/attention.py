@@ -121,8 +121,8 @@ class CrossAttentionBlock(nn.Module):
 		vA = self.proj2A(xA).permute(0,2,3,1)
 		vB = self.proj2B(xB).permute(0,2,3,1)
 		att = torch.matmul(qA, qB) * self.scale
-		fBA = torch.matmul(torch.softmax(att, dim=-1), vB)
-		fAB = torch.matmul(torch.softmax(att.permute(0,1,3,2), dim=-1), vA)
-		fBA = fBA.permute(0,3,1,2) * self.beta
-		fAB = fAB.permute(0,3,1,2) * self.gamma
-		return torch.cat((xA + fBA, xB + fAB), dim=1)
+		fA = torch.matmul(torch.softmax(att, dim=-1), vB)
+		fB = torch.matmul(torch.softmax(att.permute(0,1,3,2), dim=-1), vA)
+		fA = fA.permute(0,3,1,2) * self.beta
+		fB = fB.permute(0,3,1,2) * self.gamma
+		return torch.cat((xA + fA, xB + fB), dim=1)

@@ -3,7 +3,7 @@ name: default
 train:
   numEpochs: 100
   numBatches: 100
-  batchSize: 4
+  batchSize: 1
 
   width: 64
   height: 64
@@ -12,18 +12,18 @@ train:
   views: 2
   
   model:
-    width: 16
-    blocks: 8
+    width: 48
+    blocks: 12
 
   datapath: "/home/limitz/projects/NAFNet/datasets/StereoSR/test/KITTI2012/hr"
 
   optim:
     type: Adam
-    lr: 0.001
-    betas: [0.9, 0.9]
+    lr: 0.003
+    betas: [0.9, 0.999]
 
   sched:
     type: MultiStepLR
     gamma: 0.1
-    milestones: [50, 80, 120]
+    milestones: [20, 60, 90]
 
