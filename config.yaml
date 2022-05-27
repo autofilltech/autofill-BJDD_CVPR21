@@ -2,8 +2,8 @@ name: default
 
 train:
   numEpochs: 100
-  numBatches: 100
-  batchSize: 1
+  numBatches: 32
+  batchSize: 4
 
   width: 64
   height: 64
@@ -16,8 +16,8 @@ train:
     blocks: 12
 
   datapath: 
-    train: "/home/limitz/data/ssr_train"
-    validate: "/home/limitz/data/ssr_val"
+    train: "/home/wipkat/data/ssr_train"
+    validate: "/home/wipkat/data/ssr_val"
 
   optim:
     type: Adam

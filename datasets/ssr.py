@@ -30,19 +30,21 @@ class SSRDataset(Dataset):
 		hrPath = os.path.join(self.targetPath, self.ids[idx])
 		hr0 = io.read_image(os.path.join(hrPath, "hr0.png"))
 		hr1 = io.read_image(os.path.join(hrPath, "hr1.png"))
-		hr = torch.cat((hr0, hr1), dim=-3) / 255.0
 		
-		c,h,w = hr.shape
+		_,h,w = hr0.shape
 		if self.size is None: 
 			assert h % 2 == 0 and w % 2 == 0
 			self.size = (h//2,w//2)
-
+		
 		marginX = w - self.size[1] * 2
 		marginY = h - self.size[0] * 2
 		offsetX = torch.randint(0, marginX // 4, (1,)).item() * 4
 		offsetY = torch.randint(0, marginY // 4, (1,)).item() * 4
 		
-		hr = Tf.crop(hr, offsetY, offsetX, self.size[0]*2, self.size[1]*2)
+		hr0 = Tf.crop(hr0, offsetY, offsetX, self.size[0]*2, self.size[1]*2)
+		hr1 = Tf.crop(hr1, offsetY, offsetX, self.size[0]*2, self.size[1]*2)
+		
+		hr = torch.cat((hr0, hr1), dim=-3) / 255.0
 		lr = F.avg_pool2d(hr, 2, stride=2)
 
 		return (lr, hr)

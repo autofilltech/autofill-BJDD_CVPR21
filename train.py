@@ -17,6 +17,7 @@ import torchvision
 import torchvision.transforms as T
 from   torchsummary import summary
 from   torch.utils.tensorboard import SummaryWriter
+from   torch.profiler import profile, record_function, ProfilerActivity
 
 from modules.common import *
 from modules.reduce import *
@@ -26,6 +27,8 @@ from datasets.ssr import SSRDataset
 
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
+
+assert torch.cuda.is_available()
 
 class Trainer:
 	def __init__(self):
@@ -70,6 +73,12 @@ class Trainer:
 				self.config["train"]["width"])).cuda()
 		self.model(t)
 
+		with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA], record_shapes=True) as prof:
+			with record_function("model_forward"):
+				for _ in range(16): self.model(t)
+
+		print(prof.key_averages().table(sort_by="cpu_time_total", row_limit=50))
+
 	def train(self):
 
 		lossFunction = nn.L1Loss().cuda()
@@ -113,12 +122,12 @@ class Trainer:
 				pbEpoch.refresh()
 
 				# for testing: save images
-				grid1 = torchvision.utils.make_grid(torch.cat(lr.detach().cpu().chunk(2,dim=1)))
-				grid2 = torchvision.utils.make_grid(torch.cat(hr.detach().cpu().chunk(2,dim=1)))
-				grid3 = torchvision.utils.make_grid(torch.cat(pred.detach().cpu().chunk(2,dim=1)))
-				torchvision.io.write_png((grid1*255).to(torch.uint8), "grid1.png")
-				torchvision.io.write_png((grid2*255).to(torch.uint8), "grid2.png")
-				torchvision.io.write_png((grid3*255).to(torch.uint8), "grid3.png")
+				#grid1 = torchvision.utils.make_grid(torch.cat(lr.detach().cpu().chunk(2,dim=1)))
+				#grid2 = torchvision.utils.make_grid(torch.cat(hr.detach().cpu().chunk(2,dim=1)))
+				#grid3 = torchvision.utils.make_grid(torch.cat(pred.detach().cpu().chunk(2,dim=1)))
+				#torchvision.io.write_png((grid1*255).to(torch.uint8), "grid1.png")
+				#torchvision.io.write_png((grid2*255).to(torch.uint8), "grid2.png")
+				#torchvision.io.write_png((grid3*255).to(torch.uint8), "grid3.png")
 
 			
 			#validate
