@@ -56,8 +56,11 @@ class Trainer:
 				self.config["train"]["sched"]["milestones"],
 				self.config["train"]["sched"]["gamma"])
 
-		self.dataset = SSRDataset(self.config["train"]["datapath"], 128, 
+		self.datasetTrain = SSRDataset(self.config["train"]["datapath"]["train"], 128, 
 				length = self.config["train"]["numBatches"] * self.config["train"]["batchSize"])
+		
+		self.datasetValidate = SSRDataset(self.config["train"]["datapath"]["validate"], 128)
+
 		# warmup
 		t = torch.rand((
 				self.config["train"]["batchSize"],
@@ -69,7 +72,7 @@ class Trainer:
 
 	def train(self):
 
-		lossFunction = nn.MSELoss().cuda()
+		lossFunction = nn.L1Loss().cuda()
 		mse100 = []
 
 		r = range(self.startEpoch, self.numEpochs)
@@ -77,14 +80,21 @@ class Trainer:
 		for epoch in pbEpoch:
 
 			#train
-			loader = DataLoader(self.dataset, 
+			loaderTrain = DataLoader(self.datasetTrain, 
 				self.config["train"]["batchSize"],
 				shuffle = True)
-			loader = iter(loader)
+
+			loaderTrain = iter(loaderTrain)
+
+			loaderValidate = DataLoader(self.datasetValidate,
+				self.config["train"]["batchSize"],
+				shuffle = True)
+
+			loaderValidate = iter(loaderValidate)
 
 			pbBatch = tqdm(range(self.batchesPerEpoch), position=1, desc="BATCH", leave=False)
 			for batch in pbBatch:
-				lr, hr = loader.next()
+				lr, hr = loaderTrain.next()
 				lr = lr.cuda()
 				hr = hr.cuda()
 
@@ -113,9 +123,19 @@ class Trainer:
 			
 			#validate
 			with torch.no_grad():
-				for batch in range(1):
-					time.sleep(0.01)
-					#pred = self.model(batch)
+				loss = 0
+				numValidateBatches = 8
+				for batch in tqdm(range(numValidateBatches), position=1, desc="VALIDATING", leave=False):
+					lr, hr = loaderValidate.next()
+					lr = lr.cuda()
+					hr = hr.cuda()
+					
+					pred = self.model(lr)
+					loss += lossFunction(pred, hr).item() / numValidateBatches
+
+				pbEpoch.set_postfix({"Loss": loss })
+				pbEpoch.refresh()
+
 			#checkpoint
 			self.sched.step()
 			self.saveCheckpoint(epoch+1)

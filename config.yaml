@@ -15,7 +15,9 @@ train:
     width: 48
     blocks: 12
 
-  datapath: "/home/limitz/projects/NAFNet/datasets/StereoSR/test/KITTI2012/hr"
+  datapath: 
+    train: "/home/limitz/data/ssr_train"
+    validate: "/home/limitz/data/ssr_val"
 
   optim:
     type: Adam
