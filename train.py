@@ -22,6 +22,8 @@ from   torch.profiler import profile, record_function, ProfilerActivity
 from modules.common import *
 from modules.reduce import *
 from modules.naf import NAFNet, NAFSSRNet
+from modules.perceptual import PerceptualLoss
+from modules.adversarial import AdversarialLoss
 
 from datasets.ssr import SSRDataset
 
@@ -29,6 +31,21 @@ import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
 
 assert torch.cuda.is_available()
+torch.cuda.set_device(1)
+
+
+class TotalLoss(nn.Module):
+	def __init__(self, channels):
+		super(TotalLoss, self).__init__()
+		self.lossFunction1 = nn.L1Loss().cuda()
+		self.lossFunction2 = PerceptualLoss().cuda()
+		#self.lossFunction3 = AdversarialLoss(channels).cuda()
+		
+	def forward(self, x, y):
+		loss = self.lossFunction1(x,y)
+		loss += self.lossFunction2(x,y)
+		#loss = self.lossFunction3(x,y)
+		return loss
 
 class Trainer:
 	def __init__(self):
@@ -64,6 +81,8 @@ class Trainer:
 		
 		self.datasetValidate = SSRDataset(self.config["train"]["datapath"]["validate"], 128)
 
+		self.lossFunction = TotalLoss(self.config["train"]["channels"] * self.config["train"]["views"])
+
 		# warmup
 		t = torch.rand((
 				self.config["train"]["batchSize"],
@@ -73,16 +92,13 @@ class Trainer:
 				self.config["train"]["width"])).cuda()
 		self.model(t)
 
-		with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA], record_shapes=True) as prof:
-			with record_function("model_forward"):
-				for _ in range(16): self.model(t)
-
-		print(prof.key_averages().table(sort_by="cpu_time_total", row_limit=50))
+		#with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA], record_shapes=True) as prof:
+		#	with record_function("model_forward"):
+		#		for _ in range(16): self.model(t)
+		#print(prof.key_averages().table(sort_by="cpu_time_total", row_limit=50))
 
 	def train(self):
-
-		lossFunction = nn.L1Loss().cuda()
-		mse100 = []
+		avgLoss = []
 
 		r = range(self.startEpoch, self.numEpochs)
 		pbEpoch = tqdm(r, initial=self.startEpoch, total=self.numEpochs, position=0, desc="EPOCH")
@@ -110,24 +126,18 @@ class Trainer:
 				self.optim.zero_grad()
 
 				pred = self.model(lr)
-				loss = lossFunction(pred, hr)
+				loss = self.lossFunction(pred, hr)
 				loss.backward()
 				self.optim.step()
-				mse1 = loss.item()
-				
-				mse100.append(mse1)
-				if len(mse100) > 100: mse100.pop(0)
-				avg = sum(mse100) / len(mse100)
-				pbBatch.set_postfix({"MSE": mse1, "AVG": avg})
+			
+				loss = loss.item()
+				avgLoss.append(loss)
+				if len(avgLoss) > 100: avgLoss.pop(0)
+				avg = sum(avgLoss) / len(avgLoss)
+
+				pbBatch.set_postfix({"Loss": loss, "Avg": avg})
 				pbEpoch.refresh()
 
-				# for testing: save images
-				#grid1 = torchvision.utils.make_grid(torch.cat(lr.detach().cpu().chunk(2,dim=1)))
-				#grid2 = torchvision.utils.make_grid(torch.cat(hr.detach().cpu().chunk(2,dim=1)))
-				#grid3 = torchvision.utils.make_grid(torch.cat(pred.detach().cpu().chunk(2,dim=1)))
-				#torchvision.io.write_png((grid1*255).to(torch.uint8), "grid1.png")
-				#torchvision.io.write_png((grid2*255).to(torch.uint8), "grid2.png")
-				#torchvision.io.write_png((grid3*255).to(torch.uint8), "grid3.png")
 
 			
 			#validate
@@ -138,9 +148,20 @@ class Trainer:
 					lr, hr = loaderValidate.next()
 					lr = lr.cuda()
 					hr = hr.cuda()
-					
+				
 					pred = self.model(lr)
-					loss += lossFunction(pred, hr).item() / numValidateBatches
+					#pred = torch.clamp(pred,0,1)
+					loss += self.lossFunction(pred, hr).item() / numValidateBatches
+				
+				# for testing: save images
+				if True:
+					interpolated = F.interpolate(lr.detach(), scale_factor=2, mode="bilinear")
+					grid1 = torchvision.utils.make_grid(torch.cat(interpolated.cpu().chunk(2,dim=1)))
+					grid2 = torchvision.utils.make_grid(torch.cat(hr.detach().cpu().chunk(2,dim=1)))
+					grid3 = torchvision.utils.make_grid(torch.cat(pred.detach().cpu().chunk(2,dim=1)))
+					torchvision.io.write_png((grid1*255).to(torch.uint8), "grid1.png")
+					torchvision.io.write_png((grid2*255).to(torch.uint8), "grid2.png")
+					torchvision.io.write_png((grid3*255).to(torch.uint8), "grid3.png")
 
 				pbEpoch.set_postfix({"Loss": loss })
 				pbEpoch.refresh()
@@ -165,6 +186,7 @@ class Trainer:
 		self.model.load_state_dict(checkpoint["model"])
 		self.optim.load_state_dict(checkpoint["optim"])
 		self.sched.load_state_dict(checkpoint["sched"])
+		self.lossFunction.load_state_dict(checkpoint["loss"])
 		self.startEpoch = checkpoint["epoch"]
 		pass
 
@@ -173,7 +195,9 @@ class Trainer:
 			"epoch": epoch,
 			"model": self.model.state_dict(),
 			"optim": self.optim.state_dict(),
-			"sched": self.sched.state_dict()}
+			"sched": self.sched.state_dict(),
+			"loss" : self.lossFunction.state_dict()}
+
 		path = os.path.join(self.checkpointPath, "{}.{}.pth".format(self.name, epoch))
 		torch.save(checkpoint, path)
 		pass

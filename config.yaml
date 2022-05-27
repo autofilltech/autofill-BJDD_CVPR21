@@ -3,17 +3,17 @@ name: default
 train:
   numEpochs: 100
   numBatches: 32
-  batchSize: 4
+  batchSize: 2
 
-  width: 64
-  height: 64
+  width: 64 
+  height: 64 
   channels: 3
   scale: 2
   views: 2
   
   model:
     width: 48
-    blocks: 12
+    blocks: 12 
 
   datapath: 
     train: "/home/wipkat/data/ssr_train"
