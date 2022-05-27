@@ -37,13 +37,13 @@ torch.cuda.set_device(1)
 class TotalLoss(nn.Module):
 	def __init__(self, channels):
 		super(TotalLoss, self).__init__()
-		self.lossFunction1 = nn.L1Loss().cuda()
+		self.lossFunction1 = nn.MSELoss().cuda()
 		self.lossFunction2 = PerceptualLoss().cuda()
 		#self.lossFunction3 = AdversarialLoss(channels).cuda()
 		
 	def forward(self, x, y):
 		loss = self.lossFunction1(x,y)
-		loss += self.lossFunction2(x,y)
+		loss += 0.2 * self.lossFunction2(x,y)
 		#loss = self.lossFunction3(x,y)
 		return loss
 
@@ -150,15 +150,16 @@ class Trainer:
 					hr = hr.cuda()
 				
 					pred = self.model(lr)
-					#pred = torch.clamp(pred,0,1)
 					loss += self.lossFunction(pred, hr).item() / numValidateBatches
 				
 				# for testing: save images
 				if True:
+					pred = torch.clamp(pred,0,1)
 					interpolated = F.interpolate(lr.detach(), scale_factor=2, mode="bilinear")
-					grid1 = torchvision.utils.make_grid(torch.cat(interpolated.cpu().chunk(2,dim=1)))
-					grid2 = torchvision.utils.make_grid(torch.cat(hr.detach().cpu().chunk(2,dim=1)))
-					grid3 = torchvision.utils.make_grid(torch.cat(pred.detach().cpu().chunk(2,dim=1)))
+					n,c,h,w = interpolated.shape
+					grid1 = torchvision.utils.make_grid(torch.cat(interpolated.cpu().chunk(2,dim=1)).reshape(2,n,c//2,h,w).permute(1,0,2,3,4).reshape(n*2,c//2,h,w),2)
+					grid2 = torchvision.utils.make_grid(torch.cat(hr.detach().cpu().chunk(2,dim=1)).reshape(2,n,c//2,h,w).permute(1,0,2,3,4).reshape(n*2,c//2,h,w),2)
+					grid3 = torchvision.utils.make_grid(torch.cat(pred.detach().cpu().chunk(2,dim=1)).reshape(2,n,c//2,h,w).permute(1,0,2,3,4).reshape(n*2, c//2,h,w),2)
 					torchvision.io.write_png((grid1*255).to(torch.uint8), "grid1.png")
 					torchvision.io.write_png((grid2*255).to(torch.uint8), "grid2.png")
 					torchvision.io.write_png((grid3*255).to(torch.uint8), "grid3.png")
