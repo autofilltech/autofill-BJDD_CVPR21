@@ -4,7 +4,7 @@ import torch.nn as nn
 class ReduceAdd(nn.Module):
 	def __init__(self, *args, **kwargs):
 		super(ReduceAdd, self).__init__()
-		self.args = args
+		self.args = nn.ModuleList(args)
 		
 	def forward(self, x):
 		y = None
@@ -16,7 +16,7 @@ class ReduceAdd(nn.Module):
 class ReduceMul(nn.Module):
 	def __init__(self, *args, **kwargs):
 		super(ReduceMul, self).__init__()
-		self.args = args
+		self.args = nn.ModuleList(args)
 		
 	def forward(self, x):
 		y = None
@@ -28,7 +28,7 @@ class ReduceMul(nn.Module):
 class ReduceCat(nn.Module):
 	def __init__(self, *args, **kwargs):
 		super(ReduceCat, self).__init__()
-		self.args = args
+		self.args = nn.ModuleList(args)
 		self.dim = kwargs["dim"] if "dim" in kwargs else 0
 		
 	def forward(self, x):

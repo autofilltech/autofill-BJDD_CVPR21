@@ -41,19 +41,21 @@ class Discriminator(nn.Module):
 
 
 class AdversarialLoss(nn.Module):
-	def __init__(self, channels, lr=0.01, lr_decay=0.99):
+	def __init__(self, channels, lr=0.01, betas=[0.9, 0.99], milestones=[], gamma=0.1):
 		super(AdversarialLoss, self).__init__()
 
 		self.model = Discriminator(channels)
-		self.optim = optim.Adam(self.model.parameters(), lr=lr)
-		self.sched = optim.lr_scheduler.ExponentialLR(self.optim, lr_decay)
+		self.optim = optim.Adam(self.model.parameters(), lr=lr, betas=betas)
+		self.sched = optim.lr_scheduler.MultiStepLR(self.optim, milestones, gamma)
 		self.loss = nn.BCELoss()
-		self.channels = channels
+
+	def step(self):
+		self.sched.step()
 
 	def forward(self, x, y):
 		if x.requires_grad:
 			targetReal = (torch.rand(x.shape[0],1) * 0.3 + 0.7).to(x.device)
-			targetFake = (torch.rand(x.shape[0],1) *-0.3 - 0.7).to(x.device)
+			targetFake = (torch.rand(x.shape[0],1) * 0.3 + 0.0 ).to(x.device)
 
 			self.optim.zero_grad()
 			real = self.model(y)
@@ -62,7 +64,6 @@ class AdversarialLoss(nn.Module):
 			loss = self.loss(real, targetReal) + self.loss(fake, targetFake)
 			loss.backward()
 			self.optim.step()
-			self.sched.step()
 	
 		ones = torch.ones(x.shape[0], 1).to(x.device)
 		fake = self.model(x)

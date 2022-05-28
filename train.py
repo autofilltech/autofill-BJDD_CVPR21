@@ -25,6 +25,10 @@ from modules.naf import NAFNet, NAFSSRNet
 from modules.perceptual import FeatureLoss, ColorLoss
 from modules.adversarial import AdversarialLoss
 
+# TODO move
+from modelDefinitions.attentionGen import AttentionGenerator
+
+
 from datasets.ssr import SSRDataset
 
 import warnings
@@ -37,27 +41,27 @@ torch.cuda.set_device(1)
 class NAFSSRLoss(nn.Module):
 	def __init__(self, channels):
 		super(NAFSSRLoss, self).__init__()
-		self.lossFunction1 = nn.MSELoss().cuda()
-		self.lossFunction2 = FeatureLoss().cuda()
+		self.lossFunction1 = nn.L1Loss().cuda()
+		#self.lossFunction2 = FeatureLoss().cuda()
 		
 	def forward(self, x, y):
 		loss = self.lossFunction1(x,y)
-		loss += 0.2 * self.lossFunction2(x,y)
+		#loss += 0.2 * self.lossFunction2(x,y)
 		return loss
 
 class PIPLoss(nn.Module):
-	def __init__(self, channels):
-		super(NAFSSRLoss, self).__init__()
-		self.lossFunction1 = nn.MSELoss().cuda()
+	def __init__(self, channels, lr, betas, milestones, gamma):
+		super(PIPLoss, self).__init__()
+		self.lossFunction1 = nn.L1Loss().cuda()
 		self.lossFunction2 = FeatureLoss().cuda()
 		self.lossFunction3 = ColorLoss().cuda()
-		self.lossFunction4 = AdversarialLoss(channels).cuda()
-		
+		self.lossFunction4 = AdversarialLoss(channels, lr, betas, milestones, gamma).cuda()
+	
+	def step(self):
+		self.lossFunction4.step()
+
 	def forward(self, x, y):
-		loss = self.lossFunction1(x,y)
-		     + self.lossFunction2(x,y)
-		     + self.lossFunction3(x,y)
-		     + 0.001 * self.lossFunction4(x,y)
+		loss = self.lossFunction1(x,y) + self.lossFunction2(x,y) + self.lossFunction3(x,y) + 0.001 * self.lossFunction4(x,y)
 		return loss
 
 class NAFSSRTrainer:
@@ -89,10 +93,10 @@ class NAFSSRTrainer:
 				self.config["train"]["sched"]["milestones"],
 				self.config["train"]["sched"]["gamma"])
 
-		self.datasetTrain = SSRDataset(self.config["train"]["datapath"]["train"], 128, 
+		self.datasetTrain = SSRDataset(self.config["train"]["datapath"]["train"], (self.config["train"]["height"], self.config["train"]["width"]), 
 				length = self.config["train"]["numBatches"] * self.config["train"]["batchSize"])
 		
-		self.datasetValidate = SSRDataset(self.config["train"]["datapath"]["validate"], 128)
+		self.datasetValidate = SSRDataset(self.config["train"]["datapath"]["validate"], self.config["train"]["height"], self.config["train"]["width"])
 
 		self.lossFunction = NAFSSRLoss(self.config["train"]["channels"] * self.config["train"]["views"])
 
@@ -156,7 +160,7 @@ class NAFSSRTrainer:
 			#validate
 			with torch.no_grad():
 				loss = 0
-				numValidateBatches = 8
+				numValidateBatches = 4
 				for batch in tqdm(range(numValidateBatches), position=1, desc="VALIDATING", leave=False):
 					lr, hr = loaderValidate.next()
 					lr = lr.cuda()
@@ -170,9 +174,9 @@ class NAFSSRTrainer:
 					pred = torch.clamp(pred,0,1)
 					interpolated = F.interpolate(lr.detach(), scale_factor=2, mode="bilinear")
 					n,c,h,w = interpolated.shape
-					grid1 = torchvision.utils.make_grid(torch.cat(interpolated.cpu().chunk(2,dim=1)).reshape(2,n,c//2,h,w).permute(1,0,2,3,4).reshape(n*2,c//2,h,w),2)
-					grid2 = torchvision.utils.make_grid(torch.cat(hr.detach().cpu().chunk(2,dim=1)).reshape(2,n,c//2,h,w).permute(1,0,2,3,4).reshape(n*2,c//2,h,w),2)
-					grid3 = torchvision.utils.make_grid(torch.cat(pred.detach().cpu().chunk(2,dim=1)).reshape(2,n,c//2,h,w).permute(1,0,2,3,4).reshape(n*2, c//2,h,w),2)
+					grid1 = torchvision.utils.make_grid(torch.cat(interpolated.cpu().chunk(2,dim=1)).reshape(2,n,c//2,h,w).permute(1,0,2,3,4).reshape(n*2,c//2,h,w),4)
+					grid2 = torchvision.utils.make_grid(torch.cat(hr.detach().cpu().chunk(2,dim=1)).reshape(2,n,c//2,h,w).permute(1,0,2,3,4).reshape(n*2,c//2,h,w),4)
+					grid3 = torchvision.utils.make_grid(torch.cat(pred.detach().cpu().chunk(2,dim=1)).reshape(2,n,c//2,h,w).permute(1,0,2,3,4).reshape(n*2, c//2,h,w),4)
 					torchvision.io.write_png((grid1*255).to(torch.uint8), "grid1.png")
 					torchvision.io.write_png((grid2*255).to(torch.uint8), "grid2.png")
 					torchvision.io.write_png((grid3*255).to(torch.uint8), "grid3.png")
@@ -219,8 +223,8 @@ class NAFSSRTrainer:
 	def updateTensorBoard(self):
 		pass
 
-NAFSSRTrainer().resume()
-exit()
+#NAFSSRTrainer().resume()
+#exit()
 
 
 class PIPTrainer:
@@ -247,20 +251,23 @@ class PIPTrainer:
 				self.config["train"]["sched"]["milestones"],
 				self.config["train"]["sched"]["gamma"])
 
-		self.loss = PIPLoss(self.config["train"]["out_channels"])
+		self.lossFunction = PIPLoss(
+				self.config["train"]["out_channels"], 
+				self.config["train"]["optim"]["lr"],
+				self.config["train"]["optim"]["betas"],
+				self.config["train"]["sched"]["milestones"],
+				self.config["train"]["sched"]["gamma"])
 		
 		self.datasetTrain = SSRDataset(self.config["train"]["datapath"]["train"], 128, 
 				length = self.config["train"]["numBatches"] * self.config["train"]["batchSize"])
 		
 		self.datasetValidate = SSRDataset(self.config["train"]["datapath"]["validate"], 128)
 
-		self.lossFunction = PIPLoss(self.config["train"]["channels"] * self.config["train"]["views"])
 
 		# warmup
 		t = torch.rand((
 				self.config["train"]["batchSize"],
-				self.config["train"]["channels"] *
-				self.config["train"]["views"],
+				self.config["train"]["in_channels"],
 				self.config["train"]["height"],
 				self.config["train"]["width"])).cuda()
 		self.model(t)
@@ -340,6 +347,8 @@ class PIPTrainer:
 
 			#checkpoint
 			self.sched.step()
+			self.lossFunction.step()
+
 			self.saveCheckpoint(epoch+1)
 			self.updateTensorBoard()
 
@@ -377,4 +386,5 @@ class PIPTrainer:
 	def updateTensorBoard(self):
 		pass
 		
-
+PIPTrainer().resume()
+exit()
