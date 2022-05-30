@@ -271,7 +271,7 @@ class PIPTrainer:
 		self.numEpochs = self.config["train"]["numEpochs"]
 		self.batchesPerEpoch = self.config["train"]["numBatches"]
 		self.startEpoch = 0
-		self.numValidateBatches = 4
+		self.numValidateBatches = self.config["validate"]["numBatches"]
 
 		self.model = AttentionGenerator(
 				self.config["train"]["in_channels"], 
@@ -292,13 +292,18 @@ class PIPTrainer:
 				self.config["train"]["sched"]["milestones"],
 				self.config["train"]["sched"]["gamma"]).cuda()
 		
-		self.datasetTrain = B12Dataset(self.config["train"]["datapath"]["validate"], 
+		self.datasetTrain = B12Dataset(self.config["validate"]["datapath"], 
 				(self.config["train"]["height"], self.config["train"]["width"]), 
-				length = self.config["train"]["numBatches"] * self.config["train"]["batchSize"])
+				length = self.config["train"]["numBatches"] * self.config["train"]["batchSize"],
+				rotate = self.config["train"]["augment"]["rotate"],
+				scale = self.config["train"]["augment"]["scale"]
+				)
 		
-		self.datasetValidate = B12Dataset(self.config["train"]["datapath"]["validate"],
-				(self.config["train"]["height"]*3, self.config["train"]["width"]*3), 
-				length = self.numValidateBatches * self.config["train"]["batchSize"])
+		self.datasetValidate = B12Dataset(self.config["validate"]["datapath"],
+				(self.config["validate"]["height"], self.config["validate"]["width"]), 
+				length = self.config["validate"]["numBatches"] * self.config["validate"]["batchSize"],
+				rotate = self.config["validate"]["augment"]["rotate"],
+				scale = self.config["validate"]["augment"]["scale"])
 
 		# warmup
 		t = torch.rand((
@@ -330,7 +335,7 @@ class PIPTrainer:
 			loaderTrain = iter(loaderTrain)
 
 			loaderValidate = DataLoader(self.datasetValidate,
-				4,	#self.config["train"]["batchSize"],
+				self.config["validate"]["batchSize"],
 				shuffle = True)
 
 			loaderValidate = iter(loaderValidate)
@@ -372,6 +377,7 @@ class PIPTrainer:
 				
 				# for testing: save images
 				if True:
+					ncols = 2
 					# Low res input
 					lr = unnorm(lr)
 					lr = F.pixel_unshuffle(lr,2)
@@ -384,7 +390,7 @@ class PIPTrainer:
 					hr = unnorm(hr).clamp(0,1).detach()
 					pred = unnorm(pred).clamp(0,1).detach()
 				
-					grid1 = torchvision.utils.make_grid(lr.cpu(),4)
+					grid1 = torchvision.utils.make_grid(lr.cpu(),ncols)
 					
 
 					# Ground truth stokes
@@ -392,22 +398,22 @@ class PIPTrainer:
 					hpg = stokes(hr[:,1::3,:,:])
 					hpb = stokes(hr[:,2::3,:,:])
 					hp = torch.cat((hpr, hpg, hpb), 0)
-					grid2 = torchvision.utils.make_grid(hp.cpu(),4)
+					grid2 = torchvision.utils.make_grid(hp.cpu(),ncols)
 					
 					#predicted stokes
 					ppr = stokes(pred[:,0::3,:,:])
 					ppg = stokes(pred[:,1::3,:,:])
 					ppb = stokes(pred[:,2::3,:,:])
 					pp = torch.cat((ppr, ppg, ppb), 0)
-					grid3 = torchvision.utils.make_grid(pp.cpu(),4)
+					grid3 = torchvision.utils.make_grid(pp.cpu(),ncols)
 
 					
 					# High res color and prediction
 					hr = hr.detach().reshape(4*n, c//4, h, w)
-					grid4 = torchvision.utils.make_grid(hr.cpu(),4)
+					grid4 = torchvision.utils.make_grid(hr.cpu(),ncols)
 					
 					pred = pred.detach().reshape(4*n, c//4, h, w)
-					grid5 = torchvision.utils.make_grid(pred.cpu(),4)
+					grid5 = torchvision.utils.make_grid(pred.cpu(),ncols)
 					
 					torchvision.io.write_png((grid1*255).to(torch.uint8), "grid1.png")
 					torchvision.io.write_png((grid2*255).to(torch.uint8), "grid2.png")

@@ -10,9 +10,11 @@ train:
   in_channels: 1
   out_channels: 12 
   
-  datapath: 
-    train: "/home/wipkat/data/pip_train"
-    validate: "/home/wipkat/data/pip_val"
+  datapath: "/home/wipkat/data/pip_train"
+
+  augment:
+    rotate: True
+    scale: True
 
   optim:
     type: Adam
@@ -24,3 +26,16 @@ train:
     gamma: 0.1
     milestones: [40, 100, 160]
 
+validate:
+  batchSize: 1
+  numBatches: 4
+  width: 960
+  height: 720
+  
+  in_channels: 1
+  out_channels: 12 
+
+  augment:
+    rotate: False
+    scale: True
+  datapath: "/home/wipkat/data/pip_val"

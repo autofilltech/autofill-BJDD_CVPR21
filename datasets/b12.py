@@ -12,7 +12,7 @@ import cv2
 import numpy as np
 
 class B12Dataset(Dataset):
-	def __init__(self, path, size=224, length=None):
+	def __init__(self, path, size=224, length=None, rotate=True, scale=True):
 		super(B12Dataset, self).__init__()
 
 		self.length = length
@@ -21,14 +21,19 @@ class B12Dataset(Dataset):
 		if type(size) is int: self.size = (size, size)
 		else: self.size = size
 
-		self.transforms = T.Compose([
-			T.GaussianBlur(kernel_size = 3, sigma = 1), 
-			T.RandomRotation(degrees = (-180, +180)),
-			T.RandomResizedCrop(size=self.size, scale=(0.05, 0.25), ratio=(1,1)),
-			])
+		
+		t = [T.GaussianBlur(kernel_size = 3, sigma = 1)]
+		if rotate:
+			t.append(T.RandomRotation(degrees = (-180, +180)))
+		if scale:
+			t.append(T.RandomResizedCrop(size=self.size, scale=(0.05, 0.25), ratio=(1,1)))
+		else:
+			t.append(T.RandomCrop(size=self.size))
+
+		self.transforms = T.Compose(t)
 
 	def __len__(self):
-		return self.length if not self.length is None else len(self.ids)
+		return self.length if not self.length and self.length > len(self.ids) is None else len(self.ids)
 	
 	def __getitem__(self, idx):
 		path = self.ids[idx]
