@@ -19,7 +19,7 @@ class SqueezeExcitationLayer(nn.Module):
 		b,c,_,_ = x.size()
 		y = self.pool(x).view(b, c)
 		y = self.body(y).view(b, c, 1, 1)
-		return x + y.expand_as(x)
+		return x * y.expand_as(x)
 
 # Spatial Attention Layer
 class SpatialAttentionLayer(nn.Sequential):
@@ -29,7 +29,7 @@ class SpatialAttentionLayer(nn.Sequential):
 				ChannelMaxPool2d(),
 				ChannelAvgPool2d(),
 				dim = -3),
-			nn.Conv2d(2, 1, kernel_size, padding = kernel_size // 2, bias = bias),
+			nn.Conv2d(2, 1, kernel_size, padding = (kernel_size-1) // 2, bias = bias),
 			nn.Sigmoid())
 
 class SpatialAttentionBlock(nn.Sequential):
@@ -41,20 +41,21 @@ class SpatialAttentionBlock(nn.Sequential):
 
 # Attention Guided Residual Block
 class AttentionResBlock(nn.Sequential):
-	def __init__(self, channels = 32, expand = 64):
+	def __init__(self, channels = 32, expand = 2):
 		super(AttentionResBlock, self).__init__(
 			ReduceAdd(
 				Identity(),
-				SqueezeExcitationLayer(channels),
-				nn.Sequential(
-					nn.Conv2d(channels, expand, 1),
-					nn.BatchNorm2d(expand),
-					nn.ReLU(inplace = True),
-					nn.Conv2d(expand, expand, kernel_size=3, padding=1),
-					nn.BatchNorm2d(expand),
-					nn.ReLU(inplace = True),
-					nn.Conv2d(expand, channels, 1))))
-		
+				ReduceAdd(
+					SqueezeExcitationLayer(channels),
+					nn.Sequential(
+						nn.Conv2d(channels, channels * expand, 1),
+						nn.BatchNorm2d(channels*expand),
+						nn.LeakyReLU(inplace = True),
+						SeparableConv2d(channels*expand, channels*expand, 
+							kernel_size=3, padding=1),
+						nn.BatchNorm2d(channels*expand),
+						nn.LeakyReLU(inplace = True),
+						nn.Conv2d(channels*expand, channels, 1)))))
 
 class ChannelMaxPool2d(nn.Module):
 	def forward(self, x):

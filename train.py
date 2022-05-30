@@ -22,26 +22,30 @@ from   torch.profiler import profile, record_function, ProfilerActivity
 from modules.common import *
 from modules.reduce import *
 from modules.naf import NAFNet, NAFSSRNet
-from modules.perceptual import FeatureLoss, ColorLoss
+from modules.perceptual import FeatureLoss, YuvLoss
 from modules.adversarial import AdversarialLoss
+from modules.polar import Stokes
+
+from datasets.ssr import SSRDataset
+from datasets.b12 import B12Dataset
 
 # TODO move
 from modelDefinitions.attentionGen import AttentionGenerator
-
-
-from datasets.ssr import SSRDataset
 
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
 
 assert torch.cuda.is_available()
+
+#if you change this, also change CUDA_DEVICE_IDX in datasets/operator.h
 torch.cuda.set_device(1)
 
+def unnorm(x): return (x + 1)/2
 
 class NAFSSRLoss(nn.Module):
 	def __init__(self, channels):
 		super(NAFSSRLoss, self).__init__()
-		self.lossFunction1 = nn.L1Loss().cuda()
+		self.lossFunction1 = nn.L1Loss()
 		#self.lossFunction2 = FeatureLoss().cuda()
 		
 	def forward(self, x, y):
@@ -52,16 +56,25 @@ class NAFSSRLoss(nn.Module):
 class PIPLoss(nn.Module):
 	def __init__(self, channels, lr, betas, milestones, gamma):
 		super(PIPLoss, self).__init__()
-		self.lossFunction1 = nn.L1Loss().cuda()
-		self.lossFunction2 = FeatureLoss().cuda()
-		self.lossFunction3 = ColorLoss().cuda()
-		self.lossFunction4 = AdversarialLoss(channels, lr, betas, milestones, gamma).cuda()
+		self.lossFunction1 = nn.L1Loss()
+		self.lossFunction2 = FeatureLoss()
+		self.lossFunction3 = YuvLoss()
+		self.lossFunction4 = AdversarialLoss(channels, lr, betas, milestones, gamma)
 	
 	def step(self):
 		self.lossFunction4.step()
-
+		pass
+	
 	def forward(self, x, y):
-		loss = self.lossFunction1(x,y) + self.lossFunction2(x,y) + self.lossFunction3(x,y) + 0.001 * self.lossFunction4(x,y)
+		x = unnorm(x)
+		y = unnorm(y)
+		assert not torch.isnan(x).any()
+		assert not torch.isnan(y).any()
+		loss = self.lossFunction1(x,y) 
+		loss += self.lossFunction2(x,y) 
+		for i in range(x.shape[1]//3):
+			loss += self.lossFunction3(x[:,i*3:i*3+3,:,:],y[:,i*3:i*3+3,:,:]) 
+		#loss += 0.001 * self.lossFunction4(x,y)
 		return loss
 
 class NAFSSRTrainer:
@@ -77,6 +90,7 @@ class NAFSSRTrainer:
 		self.numEpochs = self.config["train"]["numEpochs"]
 		self.batchesPerEpoch = self.config["train"]["numBatches"]
 		self.startEpoch = 0
+		self.numValidateBatches = 4
 
 		self.model = NAFSSRNet(
 				self.config["train"]["scale"],
@@ -93,12 +107,17 @@ class NAFSSRTrainer:
 				self.config["train"]["sched"]["milestones"],
 				self.config["train"]["sched"]["gamma"])
 
-		self.datasetTrain = SSRDataset(self.config["train"]["datapath"]["train"], (self.config["train"]["height"], self.config["train"]["width"]), 
+		self.datasetTrain = SSRDataset(
+				self.config["train"]["datapath"]["train"], 
+				(self.config["train"]["height"], self.config["train"]["width"]), 
 				length = self.config["train"]["numBatches"] * self.config["train"]["batchSize"])
 		
-		self.datasetValidate = SSRDataset(self.config["train"]["datapath"]["validate"], self.config["train"]["height"], self.config["train"]["width"])
+		self.datasetValidate = SSRDataset(
+				self.config["train"]["datapath"]["validate"], 
+				(self.config["train"]["height"], self.config["train"]["width"]),
+				length = self.numValidateBatches * self.config["train"]["batchSize"])
 
-		self.lossFunction = NAFSSRLoss(self.config["train"]["channels"] * self.config["train"]["views"])
+		self.lossFunction = NAFSSRLoss(self.config["train"]["channels"] * self.config["train"]["views"]).cuda()
 
 		# warmup
 		t = torch.rand((
@@ -129,7 +148,7 @@ class NAFSSRTrainer:
 			loaderTrain = iter(loaderTrain)
 
 			loaderValidate = DataLoader(self.datasetValidate,
-				self.config["train"]["batchSize"],
+				4, #self.config["train"]["batchSize"],
 				shuffle = True)
 
 			loaderValidate = iter(loaderValidate)
@@ -155,28 +174,40 @@ class NAFSSRTrainer:
 				pbBatch.set_postfix({"Loss": loss, "Avg": avg})
 				pbEpoch.refresh()
 
-
-			
 			#validate
 			with torch.no_grad():
 				loss = 0
-				numValidateBatches = 4
-				for batch in tqdm(range(numValidateBatches), position=1, desc="VALIDATING", leave=False):
+				for batch in tqdm(range(self.numValidateBatches), position=1, desc="VALIDATING", leave=False):
 					lr, hr = loaderValidate.next()
 					lr = lr.cuda()
 					hr = hr.cuda()
 				
 					pred = self.model(lr)
-					loss += self.lossFunction(pred, hr).item() / numValidateBatches
+					loss += self.lossFunction(pred, hr).item() / self.numValidateBatches
 				
 				# for testing: save images
 				if True:
 					pred = torch.clamp(pred,0,1)
 					interpolated = F.interpolate(lr.detach(), scale_factor=2, mode="bilinear")
 					n,c,h,w = interpolated.shape
-					grid1 = torchvision.utils.make_grid(torch.cat(interpolated.cpu().chunk(2,dim=1)).reshape(2,n,c//2,h,w).permute(1,0,2,3,4).reshape(n*2,c//2,h,w),4)
-					grid2 = torchvision.utils.make_grid(torch.cat(hr.detach().cpu().chunk(2,dim=1)).reshape(2,n,c//2,h,w).permute(1,0,2,3,4).reshape(n*2,c//2,h,w),4)
-					grid3 = torchvision.utils.make_grid(torch.cat(pred.detach().cpu().chunk(2,dim=1)).reshape(2,n,c//2,h,w).permute(1,0,2,3,4).reshape(n*2, c//2,h,w),4)
+					grid1 = torchvision.utils.make_grid(
+							torch.cat(interpolated.cpu().chunk(2,dim=1))
+							.reshape(2,n,c//2,h,w)
+							.permute(1,0,2,3,4)
+							.reshape(n*2,c//2,h,w),
+							4)
+					grid2 = torchvision.utils.make_grid(
+							torch.cat(hr.detach().cpu().chunk(2,dim=1))
+							.reshape(2,n,c//2,h,w)
+							.permute(1,0,2,3,4)
+							.reshape(n*2,c//2,h,w),
+							4)
+					grid3 = torchvision.utils.make_grid(
+							torch.cat(pred.detach().cpu().chunk(2,dim=1))
+							.reshape(2,n,c//2,h,w)
+							.permute(1,0,2,3,4)
+							.reshape(n*2, c//2,h,w),
+							4)
 					torchvision.io.write_png((grid1*255).to(torch.uint8), "grid1.png")
 					torchvision.io.write_png((grid2*255).to(torch.uint8), "grid2.png")
 					torchvision.io.write_png((grid3*255).to(torch.uint8), "grid3.png")
@@ -240,8 +271,11 @@ class PIPTrainer:
 		self.numEpochs = self.config["train"]["numEpochs"]
 		self.batchesPerEpoch = self.config["train"]["numBatches"]
 		self.startEpoch = 0
+		self.numValidateBatches = 4
 
-		self.model = AttentionGenerator(self.config["train"]["in_channels"], self.config["train"]["out_channels"]).cuda()
+		self.model = AttentionGenerator(
+				self.config["train"]["in_channels"], 
+				self.config["train"]["out_channels"]).cuda()
 		
 		self.optim = optim.Adam(self.model.parameters(), 
 				self.config["train"]["optim"]["lr"], 
@@ -256,13 +290,15 @@ class PIPTrainer:
 				self.config["train"]["optim"]["lr"],
 				self.config["train"]["optim"]["betas"],
 				self.config["train"]["sched"]["milestones"],
-				self.config["train"]["sched"]["gamma"])
+				self.config["train"]["sched"]["gamma"]).cuda()
 		
-		self.datasetTrain = SSRDataset(self.config["train"]["datapath"]["train"], 128, 
+		self.datasetTrain = B12Dataset(self.config["train"]["datapath"]["validate"], 
+				(self.config["train"]["height"], self.config["train"]["width"]), 
 				length = self.config["train"]["numBatches"] * self.config["train"]["batchSize"])
 		
-		self.datasetValidate = SSRDataset(self.config["train"]["datapath"]["validate"], 128)
-
+		self.datasetValidate = B12Dataset(self.config["train"]["datapath"]["validate"],
+				(self.config["train"]["height"]*3, self.config["train"]["width"]*3), 
+				length = self.numValidateBatches * self.config["train"]["batchSize"])
 
 		# warmup
 		t = torch.rand((
@@ -279,6 +315,8 @@ class PIPTrainer:
 
 	def train(self):
 		avgLoss = []
+		
+		stokes = Stokes(color=Stokes.RGB)
 
 		r = range(self.startEpoch, self.numEpochs)
 		pbEpoch = tqdm(r, initial=self.startEpoch, total=self.numEpochs, position=0, desc="EPOCH")
@@ -292,7 +330,7 @@ class PIPTrainer:
 			loaderTrain = iter(loaderTrain)
 
 			loaderValidate = DataLoader(self.datasetValidate,
-				self.config["train"]["batchSize"],
+				4,	#self.config["train"]["batchSize"],
 				shuffle = True)
 
 			loaderValidate = iter(loaderValidate)
@@ -321,29 +359,62 @@ class PIPTrainer:
 			#validate
 			with torch.no_grad():
 				loss = 0
-				numValidateBatches = 8
-				for batch in tqdm(range(numValidateBatches), position=1, desc="VALIDATING", leave=False):
+				for batch in tqdm(range(self.numValidateBatches), position=1, desc="VALIDATING", leave=False):
 					lr, hr = loaderValidate.next()
 					lr = lr.cuda()
 					hr = hr.cuda()
 				
 					pred = self.model(lr)
-					loss += self.lossFunction(pred, hr).item() / numValidateBatches
+					loss += self.lossFunction(pred, hr).item() / self.numValidateBatches
+				
+				pbEpoch.set_postfix({"Loss": loss })
+				pbEpoch.refresh()
 				
 				# for testing: save images
 				if True:
-					pred = torch.clamp(pred,0,1)
-					interpolated = F.interpolate(lr.detach(), scale_factor=2, mode="bilinear")
-					n,c,h,w = interpolated.shape
-					grid1 = torchvision.utils.make_grid(torch.cat(interpolated.cpu().chunk(2,dim=1)).reshape(2,n,c//2,h,w).permute(1,0,2,3,4).reshape(n*2,c//2,h,w),2)
-					grid2 = torchvision.utils.make_grid(torch.cat(hr.detach().cpu().chunk(2,dim=1)).reshape(2,n,c//2,h,w).permute(1,0,2,3,4).reshape(n*2,c//2,h,w),2)
-					grid3 = torchvision.utils.make_grid(torch.cat(pred.detach().cpu().chunk(2,dim=1)).reshape(2,n,c//2,h,w).permute(1,0,2,3,4).reshape(n*2, c//2,h,w),2)
+					# Low res input
+					lr = unnorm(lr)
+					lr = F.pixel_unshuffle(lr,2)
+					lr = F.pixel_unshuffle(lr,2)
+					lr = F.interpolate(lr, scale_factor=4, mode="bilinear")
+					lr = (lr[:,[0,1,3,4,5,7,8,9,11,12,13,15],:,:] 
+							+ lr[:,[0,2,3,4,6,7,8,10,11,12,14,15],:,:]) / 2
+					n,c,h,w = lr.shape
+					lr = lr.detach().reshape(4*n, c//4, h, w)
+					hr = unnorm(hr).clamp(0,1).detach()
+					pred = unnorm(pred).clamp(0,1).detach()
+				
+					grid1 = torchvision.utils.make_grid(lr.cpu(),4)
+					
+
+					# Ground truth stokes
+					hpr = stokes(hr[:,0::3,:,:])
+					hpg = stokes(hr[:,1::3,:,:])
+					hpb = stokes(hr[:,2::3,:,:])
+					hp = torch.cat((hpr, hpg, hpb), 0)
+					grid2 = torchvision.utils.make_grid(hp.cpu(),4)
+					
+					#predicted stokes
+					ppr = stokes(pred[:,0::3,:,:])
+					ppg = stokes(pred[:,1::3,:,:])
+					ppb = stokes(pred[:,2::3,:,:])
+					pp = torch.cat((ppr, ppg, ppb), 0)
+					grid3 = torchvision.utils.make_grid(pp.cpu(),4)
+
+					
+					# High res color and prediction
+					hr = hr.detach().reshape(4*n, c//4, h, w)
+					grid4 = torchvision.utils.make_grid(hr.cpu(),4)
+					
+					pred = pred.detach().reshape(4*n, c//4, h, w)
+					grid5 = torchvision.utils.make_grid(pred.cpu(),4)
+					
 					torchvision.io.write_png((grid1*255).to(torch.uint8), "grid1.png")
 					torchvision.io.write_png((grid2*255).to(torch.uint8), "grid2.png")
 					torchvision.io.write_png((grid3*255).to(torch.uint8), "grid3.png")
+					torchvision.io.write_png((grid4*255).to(torch.uint8), "grid4.png")
+					torchvision.io.write_png((grid5*255).to(torch.uint8), "grid5.png")
 
-				pbEpoch.set_postfix({"Loss": loss })
-				pbEpoch.refresh()
 
 			#checkpoint
 			self.sched.step()
