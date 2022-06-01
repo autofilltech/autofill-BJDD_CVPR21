@@ -12,16 +12,15 @@ import cv2
 import numpy as np
 
 class B12Dataset(Dataset):
-	def __init__(self, path, size=224, length=None, rotate=True, scale=True):
+	def __init__(self, path, size=224, length=None, rotate=True, scale=True, infer=False):
 		super(B12Dataset, self).__init__()
-
+		self.infer = infer
 		self.length = length
 		self.targetPath = path
 		self.ids = [os.path.split(d)[1] for d in glob(os.path.join(self.targetPath, "*"))]
 		if type(size) is int: self.size = (size, size)
 		else: self.size = size
 
-		
 		t = [T.GaussianBlur(kernel_size = 3, sigma = 1)]
 		if rotate:
 			t.append(T.RandomRotation(degrees = (-180, +180)))
@@ -52,6 +51,8 @@ class B12Dataset(Dataset):
 		ps = F.pixel_unshuffle(b12,2)
 		ps = F.pixel_unshuffle(ps,2)
 		ps = ps.reshape(4,4,h//4,w//4).permute(1,0,2,3)
+		#ps[0] *= 1.5
+		#ps[3] *= 2.5
 		sr,mr = torch.std_mean(ps[0])
 		sb,mb = torch.std_mean(ps[3])
 		sg,mg = torch.std_mean(ps[1:2])
@@ -59,41 +60,53 @@ class B12Dataset(Dataset):
 		ps[1] = (ps[1] - mg) / sg
 		ps[2] = (ps[2] - mg) / sg
 		ps[3] = (ps[3] - mb) / sb
-		ps = torch.clamp(ps, -1, 1)
+		ps = torch.clamp(ps, -1, 1) * 0.5 + 0.5
 		ps = ps.permute(1,0,2,3).reshape(16,h//4,w//4)
 		# [RGGB RGGB RGGB RGGB]
-		# b12 = F.pixel_shuffle(ps, 2)
-		# b12 = F.pixel_shuffle(b12, 2)
-		channelsG1 = [0,1,3,4,5,7,8, 9,11,12,13,15]
-		channelsG2 = [0,2,3,4,6,7,8,10,11,12,14,15]
-		ps = (ps[channelsG1,:,:] + ps[channelsG2,:,:])/2
-		# [RGB RGB RGB RGB]
-
-		assert ps.shape[0] == 12
-		assert ps.shape[1] == b12.shape[1] // 4
-		assert ps.shape[2] == b12.shape[2] // 4
-		
-		img = self.transforms(ps)
-		raw = torch.stack((
-			img[ 0, 0::4, 0::4],
-			img[ 1, 0::4, 2::4],
-			img[ 1, 2::4, 0::4],
-			img[ 2, 2::4, 2::4],
-			img[ 3, 0::4, 1::4], 
-			img[ 4, 0::4, 3::4],
-			img[ 4, 2::4, 1::4],
-			img[ 5, 2::4, 3::4],
-			img[ 6, 1::4, 0::4],
-			img[ 7, 1::4, 2::4],
-			img[ 7, 3::4, 0::4],
-			img[ 8, 3::4, 2::4],
-			img[ 9, 1::4, 1::4],
-			img[10, 1::4, 3::4],
-			img[10, 3::4, 1::4],
-			img[11, 3::4, 3::4]))
+		if self.infer:
+			ps = F.pixel_shuffle(ps, 2)
+			ps = F.pixel_shuffle(ps, 2)
 			
-		raw = F.pixel_shuffle(raw,2)
-		raw = F.pixel_shuffle(raw,2)
-		#raw = raw * 2 - 1
-		#img = img * 2 - 1
-		return raw, img
+			hh,ww = self.size
+			top = (h-hh)//2
+			bottom = h - top * 2
+			left = (w-ww)//2
+			right = w - left * 2
+
+			if not self.size is None:
+				ps = ps[0:1, top:bottom, left:right]
+
+			return ps, self.ids[idx]
+
+		else:
+			channelsG1 = [0,1,3,4,5,7,8, 9,11,12,13,15]
+			channelsG2 = [0,2,3,4,6,7,8,10,11,12,14,15]
+			ps = (ps[channelsG1,:,:] + ps[channelsG2,:,:])/2
+			# [RGB RGB RGB RGB]
+
+			assert ps.shape[0] == 12
+			assert ps.shape[1] == b12.shape[1] // 4
+			assert ps.shape[2] == b12.shape[2] // 4
+		
+			img = self.transforms(ps)
+			raw = torch.stack((
+				img[ 0, 0::4, 0::4],
+				img[ 1, 0::4, 2::4],
+				img[ 1, 2::4, 0::4],
+				img[ 2, 2::4, 2::4],
+				img[ 3, 0::4, 1::4], 
+				img[ 4, 0::4, 3::4],
+				img[ 4, 2::4, 1::4],
+				img[ 5, 2::4, 3::4],
+				img[ 6, 1::4, 0::4],
+				img[ 7, 1::4, 2::4],
+				img[ 7, 3::4, 0::4],
+				img[ 8, 3::4, 2::4],
+				img[ 9, 1::4, 1::4],
+				img[10, 1::4, 3::4],
+				img[10, 3::4, 1::4],
+				img[11, 3::4, 3::4]))
+			
+			raw = F.pixel_shuffle(raw,2)
+			raw = F.pixel_shuffle(raw,2)
+			return raw, img

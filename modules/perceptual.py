@@ -6,7 +6,7 @@ from torchvision.models import vgg19
 from skimage import color
 import random
 import numpy as np
-from modules.common import RgbToYuv
+from modules.common import *
 
 class FeatureLoss(nn.Module):
 	def __init__(self, regulator = 1.0):
@@ -25,16 +25,18 @@ class FeatureLoss(nn.Module):
 		#i = [random.randrange(0, c//3)]
 		i = range(c//3)
 		featureLoss = 0
+		nx = defaultNormalize(x)
+		ny = defaultNormalize(y)
 		for idx in i:
 			# VGG Feature Loss
-			x0 = self.feature_extractor(x[:,idx*3:idx*3+3,:,:] * 2 - 1)
-			y0 = self.feature_extractor(y[:,idx*3:idx*3+3,:,:] * 2 - 1)
+			x0 = self.feature_extractor(nx[:,idx*3:idx*3+3,:,:])
+			y0 = self.feature_extractor(ny[:,idx*3:idx*3+3,:,:])
 			featureLoss += self.loss(x0, y0) * self.regulator
 		
 		# TV loss
-		dh = torch.abs((x[:, :, 1:, :] - x[:, :, :-1, :] - (y[:, :, 1:, :] - y[:, :, :-1, :]))).sum()
-		dw = torch.abs((x[:, :, :, 1:] - x[:, :, :, :-1] - (y[:, :, :, 1:] - y[:, :, :, :-1]))).sum()
-		tvLoss = (dh + dw) / size[0] / size[1] / size[2] / size[3]
+		dh = torch.abs((x[:, :, 1:, :] - x[:, :, :-1, :] - (y[:, :, 1:, :] - y[:, :, :-1, :]))).mean()
+		dw = torch.abs((x[:, :, :, 1:] - x[:, :, :, :-1] - (y[:, :, :, 1:] - y[:, :, :, :-1]))).mean()
+		tvLoss = dh + dw
 		
 		# Total Loss
 		totalLoss = featureLoss * tvLoss

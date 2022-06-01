@@ -28,7 +28,7 @@ class SpatialAttentionLayer(nn.Sequential):
 			ReduceCat(
 				ChannelMaxPool2d(),
 				ChannelAvgPool2d(),
-				dim = -3),
+				dim = 1),
 			nn.Conv2d(2, 1, kernel_size, padding = (kernel_size-1) // 2, bias = bias),
 			nn.Sigmoid())
 
@@ -48,23 +48,23 @@ class AttentionResBlock(nn.Sequential):
 				ReduceAdd(
 					SqueezeExcitationLayer(channels),
 					nn.Sequential(
-						nn.Conv2d(channels, channels * expand, 1),
-						nn.BatchNorm2d(channels*expand),
+						nn.Conv2d(channels, 64 + 0 * channels * expand, 1),
+						#nn.BatchNorm2d(channels*expand),
 						nn.LeakyReLU(inplace = True),
-						SeparableConv2d(channels*expand, channels*expand, 
+						SeparableConv2d(64 + 0 * channels * expand, 64 + 0 * channels * expand, 
 							kernel_size=3, padding=1),
-						nn.BatchNorm2d(channels*expand),
+						#nn.BatchNorm2d(channels*expand),
 						nn.LeakyReLU(inplace = True),
-						nn.Conv2d(channels*expand, channels, 1)))))
+						nn.Conv2d(64 + 0 * channels * expand, channels, 1)))))
 
 class ChannelMaxPool2d(nn.Module):
 	def forward(self, x):
-		xmax,_ = torch.max(x, dim=-3, keepdim=True)
+		xmax,_ = torch.max(x, dim=1, keepdim=True)
 		return xmax
 
 class ChannelAvgPool2d(nn.Module):
 	def forward(self, x):
-		xmean = torch.mean(x, dim=-3, keepdim=True)
+		xmean = torch.mean(x, dim=1, keepdim=True)
 		return xmean
 
 class ChannelAttentionLayer(nn.Sequential):

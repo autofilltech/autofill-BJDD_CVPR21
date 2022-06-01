@@ -24,14 +24,14 @@ from modules.reduce import *
 from modules.naf import NAFNet, NAFSSRNet
 from modules.perceptual import FeatureLoss, YuvLoss
 from modules.adversarial import AdversarialLoss
-from modules.polar import Stokes
+from modules.polar import Stokes, polarDefaultNormalize
 
 from datasets.ssr import SSRDataset
 from datasets.b12 import B12Dataset
 
 # TODO move
 from modelDefinitions.attentionGen import AttentionGenerator
-
+import math
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
 
@@ -39,8 +39,6 @@ assert torch.cuda.is_available()
 
 #if you change this, also change CUDA_DEVICE_IDX in datasets/operator.h
 torch.cuda.set_device(1)
-
-def unnorm(x): return (x + 1)/2
 
 class NAFSSRLoss(nn.Module):
 	def __init__(self, channels):
@@ -58,24 +56,43 @@ class PIPLoss(nn.Module):
 		super(PIPLoss, self).__init__()
 		self.lossFunction1 = nn.L1Loss()
 		self.lossFunction2 = FeatureLoss()
-		self.lossFunction3 = YuvLoss()
+		self.lossFunction3 = nn.MSELoss() #YuvLoss()
 		self.lossFunction4 = AdversarialLoss(channels, lr, betas, milestones, gamma)
-	
+		self.stokes = Stokes(color=Stokes.LOSS)
+
 	def step(self):
 		self.lossFunction4.step()
 		pass
 	
-	def forward(self, x, y):
-		x = unnorm(x)
-		y = unnorm(y)
+	def forward(self, x, y, epoch, b):
+		n,c,h,w = x.shape
 		assert not torch.isnan(x).any()
 		assert not torch.isnan(y).any()
-		loss = self.lossFunction1(x,y) 
-		loss += self.lossFunction2(x,y) 
-		for i in range(x.shape[1]//3):
-			loss += self.lossFunction3(x[:,i*3:i*3+3,:,:],y[:,i*3:i*3+3,:,:]) 
+		assert c == 12
+		assert x.shape == y.shape
+
+		sx = x.view(n,4,3,h,w).permute(0,2,1,3,4).reshape(n*3, 4, h, w)
+		sy = y.view(n,4,3,h,w).permute(0,2,1,3,4).reshape(n*3, 4, h, w)
+		sx = self.stokes(sx)
+		sy = self.stokes(sy)
+		
+		
+		if epoch > 40:
+			loss = self.lossFunction3(x,y)
+			loss += self.lossFunction3(sx,sy)
+		else:
+			loss = self.lossFunction3(x,y)
+			loss += self.lossFunction3(sx,sy)
+
+		if epoch > 100:
+			loss += self.lossFunction2(x,y)
+			#loss += self.lossFunction2(sx,sy)
+
+		#for i in range(x.shape[1]//3):
+		#	loss += self.lossFunction3(x[:,i*3:i*3+3,:,:],y[:,i*3:i*3+3,:,:]) 
 		#loss += 0.001 * self.lossFunction4(x,y)
-		return loss
+		return loss		
+		
 
 class NAFSSRTrainer:
 	def __init__(self):
@@ -135,7 +152,7 @@ class NAFSSRTrainer:
 
 	def train(self):
 		avgLoss = []
-
+		totalBatches = 0
 		r = range(self.startEpoch, self.numEpochs)
 		pbEpoch = tqdm(r, initial=self.startEpoch, total=self.numEpochs, position=0, desc="EPOCH")
 		for epoch in pbEpoch:
@@ -155,6 +172,7 @@ class NAFSSRTrainer:
 
 			pbBatch = tqdm(range(self.batchesPerEpoch), position=1, desc="BATCH", leave=False)
 			for batch in pbBatch:
+				totalBatches += 1
 				lr, hr = loaderTrain.next()
 				lr = lr.cuda()
 				hr = hr.cuda()
@@ -320,7 +338,7 @@ class PIPTrainer:
 
 	def train(self):
 		avgLoss = []
-		
+		totalBatches = 0
 		stokes = Stokes(color=Stokes.RGB)
 
 		r = range(self.startEpoch, self.numEpochs)
@@ -342,14 +360,16 @@ class PIPTrainer:
 
 			pbBatch = tqdm(range(self.batchesPerEpoch), position=1, desc="BATCH", leave=False)
 			for batch in pbBatch:
+				totalBatches += 1
 				lr, hr = loaderTrain.next()
 				lr = lr.cuda()
 				hr = hr.cuda()
 
 				self.optim.zero_grad()
 
-				pred = self.model(lr)
-				loss = self.lossFunction(pred, hr)
+				pred = self.model(polarDefaultNormalize(lr))
+				pred = defaultUnnormalize(pred)
+				loss = self.lossFunction(pred, hr, epoch, totalBatches - 1)
 				loss.backward()
 				self.optim.step()
 			
@@ -369,29 +389,28 @@ class PIPTrainer:
 					lr = lr.cuda()
 					hr = hr.cuda()
 				
-					pred = self.model(lr)
-					loss += self.lossFunction(pred, hr).item() / self.numValidateBatches
+					pred = self.model(polarDefaultNormalize(lr))
+					pred = defaultUnnormalize(pred)
+					loss += self.lossFunction(pred, hr, epoch, totalBatches-1).item() / self.numValidateBatches
 				
 				pbEpoch.set_postfix({"Loss": loss })
 				pbEpoch.refresh()
 				
 				# for testing: save images
 				if True:
-					ncols = 2
+					ncols = 4
 					# Low res input
-					lr = unnorm(lr)
 					lr = F.pixel_unshuffle(lr,2)
 					lr = F.pixel_unshuffle(lr,2)
 					lr = F.interpolate(lr, scale_factor=4, mode="bilinear")
 					lr = (lr[:,[0,1,3,4,5,7,8,9,11,12,13,15],:,:] 
 							+ lr[:,[0,2,3,4,6,7,8,10,11,12,14,15],:,:]) / 2
 					n,c,h,w = lr.shape
-					lr = lr.detach().reshape(4*n, c//4, h, w)
-					hr = unnorm(hr).clamp(0,1).detach()
-					pred = unnorm(pred).clamp(0,1).detach()
+					lr = lr.clamp(0,1).detach().reshape(4*n, c//4, h, w)
+					hr = hr.clamp(0,1).detach()
+					pred = pred.clamp(0,1).detach()
 				
 					grid1 = torchvision.utils.make_grid(lr.cpu(),ncols)
-					
 
 					# Ground truth stokes
 					hpr = stokes(hr[:,0::3,:,:])
