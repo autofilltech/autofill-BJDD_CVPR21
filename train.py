@@ -68,25 +68,19 @@ class PIPLoss(nn.Module):
 		n,c,h,w = x.shape
 		assert not torch.isnan(x).any()
 		assert not torch.isnan(y).any()
-		assert c == 12
 		assert x.shape == y.shape
 
-		sx = x.view(n,4,3,h,w).permute(0,2,1,3,4).reshape(n*3, 4, h, w)
-		sy = y.view(n,4,3,h,w).permute(0,2,1,3,4).reshape(n*3, 4, h, w)
-		sx = self.stokes(sx)
-		sy = self.stokes(sy)
-		
-		
-		if epoch > 40:
-			loss = self.lossFunction3(x,y)
-			loss += self.lossFunction3(sx,sy)
-		else:
-			loss = self.lossFunction3(x,y)
-			loss += self.lossFunction3(sx,sy)
+		loss = self.lossFunction3(x,y)
+		if c == 12:
+			sx = x.view(n,4,3,h,w).permute(0,2,1,3,4).reshape(n*3, 4, h, w)
+			sy = y.view(n,4,3,h,w).permute(0,2,1,3,4).reshape(n*3, 4, h, w)
+			sx = self.stokes(sx)
+			sy = self.stokes(sy)	
+			loss += self.lossFunction1(sx,sy)
 
-		if epoch > 100:
+		if epoch > 100 or c == 1:
 			loss += self.lossFunction2(x,y)
-			#loss += self.lossFunction2(sx,sy)
+			
 
 		#for i in range(x.shape[1]//3):
 		#	loss += self.lossFunction3(x[:,i*3:i*3+3,:,:],y[:,i*3:i*3+3,:,:]) 
@@ -127,12 +121,14 @@ class NAFSSRTrainer:
 		self.datasetTrain = SSRDataset(
 				self.config["train"]["datapath"]["train"], 
 				(self.config["train"]["height"], self.config["train"]["width"]), 
-				length = self.config["train"]["numBatches"] * self.config["train"]["batchSize"])
+				length = self.config["train"]["numBatches"] * self.config["train"]["batchSize"],
+				channels = 1)
 		
 		self.datasetValidate = SSRDataset(
 				self.config["train"]["datapath"]["validate"], 
 				(self.config["train"]["height"], self.config["train"]["width"]),
-				length = self.numValidateBatches * self.config["train"]["batchSize"])
+				length = self.numValidateBatches * self.config["train"]["batchSize"],
+				channels = 1)
 
 		self.lossFunction = NAFSSRLoss(self.config["train"]["channels"] * self.config["train"]["views"]).cuda()
 
@@ -314,14 +310,16 @@ class PIPTrainer:
 				(self.config["train"]["height"], self.config["train"]["width"]), 
 				length = self.config["train"]["numBatches"] * self.config["train"]["batchSize"],
 				rotate = self.config["train"]["augment"]["rotate"],
-				scale = self.config["train"]["augment"]["scale"]
+				scale = self.config["train"]["augment"]["scale"],
+				channels = 1
 				)
 		
 		self.datasetValidate = B12Dataset(self.config["validate"]["datapath"],
 				(self.config["validate"]["height"], self.config["validate"]["width"]), 
 				length = self.config["validate"]["numBatches"] * self.config["validate"]["batchSize"],
 				rotate = self.config["validate"]["augment"]["rotate"],
-				scale = self.config["validate"]["augment"]["scale"])
+				scale = self.config["validate"]["augment"]["scale"],
+				channels = 1)
 
 		# warmup
 		t = torch.rand((
@@ -364,7 +362,6 @@ class PIPTrainer:
 				lr, hr = loaderTrain.next()
 				lr = lr.cuda()
 				hr = hr.cuda()
-
 				self.optim.zero_grad()
 
 				pred = self.model(polarDefaultNormalize(lr))
@@ -400,43 +397,21 @@ class PIPTrainer:
 				if True:
 					ncols = 4
 					# Low res input
-					lr = F.pixel_unshuffle(lr,2)
-					lr = F.pixel_unshuffle(lr,2)
-					lr = F.interpolate(lr, scale_factor=4, mode="bilinear")
-					lr = (lr[:,[0,1,3,4,5,7,8,9,11,12,13,15],:,:] 
-							+ lr[:,[0,2,3,4,6,7,8,10,11,12,14,15],:,:]) / 2
 					n,c,h,w = lr.shape
-					lr = lr.clamp(0,1).detach().reshape(4*n, c//4, h, w)
+					lr = lr.clamp(0,1).detach()
 					hr = hr.clamp(0,1).detach()
 					pred = pred.clamp(0,1).detach()
 				
 					grid1 = torchvision.utils.make_grid(lr.cpu(),ncols)
 
-					# Ground truth stokes
-					hpr = stokes(hr[:,0::3,:,:])
-					hpg = stokes(hr[:,1::3,:,:])
-					hpb = stokes(hr[:,2::3,:,:])
-					hp = torch.cat((hpr, hpg, hpb), 0)
-					grid2 = torchvision.utils.make_grid(hp.cpu(),ncols)
-					
-					#predicted stokes
-					ppr = stokes(pred[:,0::3,:,:])
-					ppg = stokes(pred[:,1::3,:,:])
-					ppb = stokes(pred[:,2::3,:,:])
-					pp = torch.cat((ppr, ppg, ppb), 0)
-					grid3 = torchvision.utils.make_grid(pp.cpu(),ncols)
-
-					
 					# High res color and prediction
-					hr = hr.detach().reshape(4*n, c//4, h, w)
+					hr = hr.detach()
 					grid4 = torchvision.utils.make_grid(hr.cpu(),ncols)
 					
-					pred = pred.detach().reshape(4*n, c//4, h, w)
+					pred = pred.detach()
 					grid5 = torchvision.utils.make_grid(pred.cpu(),ncols)
 					
 					torchvision.io.write_png((grid1*255).to(torch.uint8), "grid1.png")
-					torchvision.io.write_png((grid2*255).to(torch.uint8), "grid2.png")
-					torchvision.io.write_png((grid3*255).to(torch.uint8), "grid3.png")
 					torchvision.io.write_png((grid4*255).to(torch.uint8), "grid4.png")
 					torchvision.io.write_png((grid5*255).to(torch.uint8), "grid5.png")
 

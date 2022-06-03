@@ -12,16 +12,17 @@ import cv2
 import numpy as np
 
 class B12Dataset(Dataset):
-	def __init__(self, path, size=224, length=None, rotate=True, scale=True, infer=False):
+	def __init__(self, path, size=224, length=None, *, rotate=True, scale=True, infer=False, channels=12):
 		super(B12Dataset, self).__init__()
 		self.infer = infer
+		self.channels = channels
 		self.length = length
 		self.targetPath = path
 		self.ids = [os.path.split(d)[1] for d in glob(os.path.join(self.targetPath, "*"))]
 		if type(size) is int: self.size = (size, size)
 		else: self.size = size
 
-		t = [T.GaussianBlur(kernel_size = 3, sigma = 1)]
+		t = [] #T.GaussianBlur(kernel_size = 3, sigma = 1)]
 		if rotate:
 			t.append(T.RandomRotation(degrees = (-180, +180)))
 		if scale:
@@ -32,7 +33,7 @@ class B12Dataset(Dataset):
 		self.transforms = T.Compose(t)
 
 	def __len__(self):
-		return self.length if not self.length and self.length > len(self.ids) is None else len(self.ids)
+		return self.length if not self.length is None and self.length > len(self.ids) else len(self.ids)
 	
 	def __getitem__(self, idx):
 		path = self.ids[idx]
@@ -51,17 +52,17 @@ class B12Dataset(Dataset):
 		ps = F.pixel_unshuffle(b12,2)
 		ps = F.pixel_unshuffle(ps,2)
 		ps = ps.reshape(4,4,h//4,w//4).permute(1,0,2,3)
-		#ps[0] *= 1.5
-		#ps[3] *= 2.5
-		sr,mr = torch.std_mean(ps[0])
-		sb,mb = torch.std_mean(ps[3])
-		sg,mg = torch.std_mean(ps[1:2])
-		ps[0] = (ps[0] - mr) / sr
-		ps[1] = (ps[1] - mg) / sg
-		ps[2] = (ps[2] - mg) / sg
-		ps[3] = (ps[3] - mb) / sb
-		ps = torch.clamp(ps, -1, 1) * 0.5 + 0.5
-		ps = ps.permute(1,0,2,3).reshape(16,h//4,w//4)
+		ps[0] *= 1.5
+		ps[3] *= 2.5
+		#sr,mr = torch.std_mean(ps[0])
+		#sb,mb = torch.std_mean(ps[3])
+		#sg,mg = torch.std_mean(ps[1:2])
+		#ps[0] = (ps[0] - mr) / sr
+		#ps[1] = (ps[1] - mg) / sg
+		#ps[2] = (ps[2] - mg) / sg
+		#ps[3] = (ps[3] - mb) / sb
+		#ps = torch.clamp(ps, -1, 1) * 0.5 + 0.5
+		ps = ps.permute(1,0,2,3).reshape(16,h//4,w//4).clamp(0,1)
 		# [RGGB RGGB RGGB RGGB]
 		if self.infer:
 			ps = F.pixel_shuffle(ps, 2)
@@ -69,9 +70,9 @@ class B12Dataset(Dataset):
 			
 			hh,ww = self.size
 			top = (h-hh)//2
-			bottom = h - top * 2
-			left = (w-ww)//2
-			right = w - left * 2
+			bottom = h - top
+			left = (w-ww)
+			right = w
 
 			if not self.size is None:
 				ps = ps[0:1, top:bottom, left:right]
@@ -109,4 +110,8 @@ class B12Dataset(Dataset):
 			
 			raw = F.pixel_shuffle(raw,2)
 			raw = F.pixel_shuffle(raw,2)
+
+			if self.channels == 1:
+				img = img.sum(dim=0, keepdim=True) / 12 
+
 			return raw, img

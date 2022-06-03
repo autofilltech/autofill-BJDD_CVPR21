@@ -9,19 +9,22 @@ def chan(x, idx): return x[:,idx:idx+1,:,:]
 def defaultNormalize(x):
 	assert x.dim() == 4
 	n,c,h,w = x.shape
-	assert 0 == (c % 3) 
-	std = torch.tensor([0.229, 0.224, 0.224]).repeat(c//3).expand(n,h,w,-1).permute(0,3,1,2)
-	mean = torch.tensor([0.485, 0.486, 0.406]).repeat(c//3).expand(n,h,w,-1).permute(0,3,1,2)
-	return (x - mean.to(x.device)) / std.to(x.device)
+	if 0 == (c % 3):
+		std = torch.tensor([0.229, 0.224, 0.224]).repeat(c//3).expand(n,h,w,-1).permute(0,3,1,2)
+		mean = torch.tensor([0.485, 0.486, 0.406]).repeat(c//3).expand(n,h,w,-1).permute(0,3,1,2)
+		return (x - mean.to(x.device)) / std.to(x.device)
+	else:
+		return (x - 0.5) * 2
 
 def defaultUnnormalize(x):
 	n,c,h,w = x.shape
 	assert x.dim() == 4
-	assert 0 == (c % 3) 
-	std = torch.tensor([0.229, 0.224, 0.224]).repeat(c//3).expand(n, h, w, -1).permute(0,3,1,2)
-	mean = torch.tensor([0.485, 0.486, 0.406]).repeat(c//3).expand(n, h, w, -1).permute(0,3,1,2)
-	return x * std.to(x.device) + mean.to(x.device)
-
+	if 0 == (c % 3):
+		std = torch.tensor([0.229, 0.224, 0.224]).repeat(c//3).expand(n, h, w, -1).permute(0,3,1,2)
+		mean = torch.tensor([0.485, 0.486, 0.406]).repeat(c//3).expand(n, h, w, -1).permute(0,3,1,2)
+		return x * std.to(x.device) + mean.to(x.device)
+	else:
+		return (x / 2) + 0.5
 
 class Gate(nn.Module):
 	def forward(self, x):

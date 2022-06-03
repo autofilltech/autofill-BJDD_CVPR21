@@ -1,14 +1,14 @@
-name: pipnet5
+name: pip1net
 
 train:
-  numEpochs: 400
+  numEpochs: 100
   numBatches: 16 
-  batchSize: 16
+  batchSize: 32
 
   width: 128
   height: 128
   in_channels: 1
-  out_channels: 12 
+  out_channels: 1 
   
   datapath: "/home/wipkat/data/pip_train"
 
@@ -29,22 +29,23 @@ train:
 validate:
   batchSize: 4
   numBatches: 4
-  width: 256
-  height: 256
+  width: 1024
+  height: 1024
   
   in_channels: 1
-  out_channels: 12 
+  out_channels: 1
 
   augment:
     rotate: False
     scale: True
   datapath: "/home/wipkat/data/pip_val"
 
-  infer:
-    width: 1920
-    height: 1440
-    in_channels: 1
-    out_channels: 12
+infer:
+  width: 1440
+  height: 1920
+  in_channels: 1
+  out_channels: 1
 
-    datapath: "/home/wipkat/data/pip_infer"
-    output: "/home/wipkat/data/pip_output"
+  checkpoint: "./checkpoints/pip/pip1net.pth"
+  datapath: "/home/wipkat/data/pip_infer"
+  outpath: "/home/wipkat/data/pip_output"

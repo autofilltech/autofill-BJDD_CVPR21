@@ -118,7 +118,7 @@ class NAFNet(nn.Module):
 
 
 class NAFSSRNet(nn.Module):
-	def __init__(self, scale_up, in_channels, views=2, width=48, num_blocks=16):
+	def __init__(self, scale_up, in_channels, views=2, width=48, num_blocks=12):
 		super(NAFSSRNet, self).__init__()
 		self.conv1 = nn.Conv2d(in_channels, width, 3, padding=1)
 		self.body = nn.Sequential(*[NAFSSRBlock(width) for _ in range(num_blocks)])

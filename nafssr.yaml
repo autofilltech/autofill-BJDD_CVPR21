@@ -29,3 +29,13 @@ train:
     gamma: 0.2
     milestones: [30, 60, 90]
 
+infer:
+  width: 1024
+  height: 512
+  in_channels: 3
+  out_channels: 3
+  
+  checkpoint: "./checkpoints/default.100.pth"
+  datapath: "/home/wipkat/data/ssr_infer/input"
+  outpath: "/home/wipkat/data/ssr_output"
+
